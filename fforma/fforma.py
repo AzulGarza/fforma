@@ -1,246 +1,227 @@
-import pandas as pd
+#!/usr/bin/env python
+# coding: utf-8
+
 import numpy as np
+import pandas as pd
 import multiprocessing as mp
-import lightgbm as lgb
 
-import copy
-
-from sklearn.model_selection import StratifiedKFold
-from scipy.special import softmax
+from fforma.meta_model import MetaModels
+from fforma.meta_learner import MetaLearner
+from fforma.meta_evaluation import calc_errors
+from fforma.base_models import SeasonalNaive, Naive2, RandomWalkDrift
+from tsfeatures.metrics import AVAILABLE_METRICS
 from tsfeatures import tsfeatures
-from math import isclose
-from fforma.utils_input import _check_valid_df, _check_same_type, _check_passed_dfs, _check_valid_columns
-from fforma.utils_models import _train_lightgbm, _train_lightgbm_cv, _train_lightgbm_grid_search
+from sklearn.utils.validation import check_is_fitted
 
 
+class FFORMA(object):
+    """Feature-based Forecast Model Averaging (FFORMA).
 
-class FFORMA:
 
-    def __init__(self, objective='FFORMA', verbose_eval=True,
-                 early_stopping_rounds=10,
-                 params=None,
-                 param_grid=None,
-                 use_cv=False, nfolds=5,
-                 greedy_search=False,
-                 threads=None, seed=260294):
-        """ Feature-based Forecast Model Averaging.
+    Parameters
+    ----------
+    params: dict
+        Dictionary of paratemeters to train gradient boosting.
+    h: int
+        Forecast horizon.
+    seasonality: int
+        Time series frequency.
+    base_models: dict
+        Dictionary of models to train. Ej {'ARIMA': ARIMA()}.
+        Default None. Models: 'SeasonalNaive', 'Naive2', 'RandomWalkDrift'.
+    metric: str
+        Metric used to calculate contribution to error.
+        By default 'owa' is used.
+    early_stopping_rounds: int
+        Maximum number of gradient boosting rounds.
+        Default 10.
+    threads: int
+        Number of threads to use.
+        Use None (default) for parallel processing.
+    random_seed: int
+        Random seed.
+        Default 1.
+    """
 
-        Python Implementation of FFORMA.
+    def __init__(self, params, h, seasonality, base_models=None, metric='owa',
+                 early_stopping_rounds=10, threads=None, random_seed=1):
 
-        Parameters
-        ----------
-        xgb_params:
-            Parameters for the xgboost
-        obj: str
-            Type of error to calculate
-        -----
-        ** References: **
-        <https://robjhyndman.com/publications/fforma/>
-        """
-        self.dict_obj = {'FFORMA': (self.fforma_objective, self.fforma_loss),
-                         'FFORMADL': (self.fformadl_objective, self.fformadl_loss)}
+        self.h = h
+        self.seasonality = seasonality
+        self.random_seed = random_seed
+        self.early_stopping_rounds = early_stopping_rounds
 
-        fobj, feval = self.dict_obj.get(objective, (None, None))
-        self.objective, self.greedy_search = objective, greedy_search
+        if base_models is None:
+            self.base_models = {'SeasonalNaive': SeasonalNaive(h, seasonality),
+                                'Naive2': Naive2(h, seasonality),
+                                'RandomWalkDrift': RandomWalkDrift(h)}
+
+        assert metric in AVAILABLE_METRICS, "Metric not specified in metrics.py"
 
         if threads is None:
-            threads = mp.cpu_count() - 1
+            threads = mp.cpu_count()
 
         init_params = {
             'objective': 'multiclass',
             'nthread': threads,
-            'seed': seed
+            'seed': random_seed
         }
 
-        if params:
-            train_params = {**params, **init_params}
-        else:
-            train_params = {'n_estimators': 100}
-            train_params = {**train_params, **init_params}
+        self.params = {**params, **init_params}
+
+    def _validation_holdout(self, X_df, y_df, h):
+        """Splits the data in train and validation sets."""
+        val = y_df.groupby('unique_id').tail(h)
+        train = y_df.groupby('unique_id').apply(lambda df: df.head(-h)).reset_index(drop=True)
+
+        return train, val
+
+    def _fit_predict_base_models(self, base_models, train_df, val_df):
+        """Fits base models using MetaModels class."""
+        meta_models = MetaModels(base_models)
+        meta_models.fit(train_df)
+        predictions = meta_models.predict(val_df)
+
+        return predictions
+
+    def _compute_base_models_errors(self, predictions):
+        """Calculates validation errrors."""
+        errors = calc_errors(y_panel_df=predictions,
+                             y_insample_df=self.train_df,
+                             seasonality=self.seasonality)
+
+        return errors
+
+    def _compute_features(self):
+        """Wrapper of tsfeatures."""
+        features = tsfeatures(ts=self.train_df,
+                              freq=self.seasonality)
+
+        return features
+
+    def pre_fit(self, X_df, y_df, val_predictions, features):
+        """Calculates errors and features if needed.
 
 
-        if param_grid is not None:
-            folds = lambda holdout_feats, best_models: StratifiedKFold(n_splits=nfolds).split(holdout_feats, best_models)
-
-            self._train = lambda holdout_feats, best_models: _train_lightgbm_grid_search(holdout_feats, best_models,
-                                                                                use_cv, init_params, param_grid, fobj, feval,
-                                                                                early_stopping_rounds, verbose_eval,
-                                                                                seed, folds)
-        elif use_cv:
-            folds = lambda holdout_feats, best_models: StratifiedKFold(n_splits=nfolds).split(holdout_feats, best_models)
-
-            self._train = lambda holdout_feats, best_models: _train_lightgbm_cv(holdout_feats, best_models,
-                                                                                train_params, fobj, feval,
-                                                                                early_stopping_rounds, verbose_eval,
-                                                                                seed, folds)
-        else:
-            self._train = lambda holdout_feats, best_models: _train_lightgbm(holdout_feats, best_models,
-                                                                             train_params, fobj, feval,
-                                                                             early_stopping_rounds, verbose_eval,
-                                                                             seed)
-        self._fitted = False
-
-    def _tsfeatures(self, y_train_df, y_val_df, freq):
-        #TODO receive panel of freq
-        complete_data = pd.concat([y_train_df, y_test_df.filter(items=['unique_id', 'ds', 'y'])])
-        holdout_feats = tsfeatures(y_train_df)
-        feats = tsfeatures(complete_data)
-
-        return feats, holdout_feats
-
-    # Objective function for lgb
-    def fforma_objective(self, predt: np.ndarray, dtrain) -> (np.ndarray, np.ndarray):
-        '''
-        Compute...
-        '''
-        y = dtrain.get_label().astype(int)
-        n_train = len(y)
-        preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        preds_transformed = softmax(preds, axis=1)
-
-        weighted_avg_loss_func = (preds_transformed*self.contribution_to_error[y, :]).sum(axis=1).reshape((n_train, 1))
-
-        grad = preds_transformed*(self.contribution_to_error[y, :] - weighted_avg_loss_func)
-        hess = self.contribution_to_error[y,:]*preds_transformed*(1.0-preds_transformed) - grad*preds_transformed
-        #hess = grad*(1 - 2*preds_transformed)
-        return grad.flatten('F'), hess.flatten('F')
-
-    def fforma_loss(self, predt: np.ndarray, dtrain) -> (str, float):
-        '''
-        Compute...
-        '''
-        y = dtrain.get_label().astype(int)
-        n_train = len(y)
-        #for lightgbm
-        preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        #lightgbm uses margins!
-        preds_transformed = softmax(preds, axis=1)
-        weighted_avg_loss_func = (preds_transformed*self.contribution_to_error[y, :]).sum(axis=1)
-        fforma_loss = weighted_avg_loss_func.mean()
-
-        return 'FFORMA-loss', fforma_loss, False
-
-    def fit(self, y_train_df=None, y_val_df=None,
-            val_periods=None,
-            errors=None, holdout_feats=None,
-            feats=None, freq=None, base_model=None,
-            sorted_data=False, weights=None):
-        """
-        y_train_df: pandas df
-            panel with columns unique_id, ds, y
-        y_val_df: pandas df
-            panel with columns unique_id, ds, y, {model} for each model to ensemble
-        val_periods: int or pandas df
-            int: number of val periods
-            pandas df: panel with columns unique_id, val_periods
-        """
-
-        if (errors is None) and (feats is None):
-            assert (y_train_df is not None) and (y_val_df is not None), "you must provide a y_train_df and y_val_df"
-            is_pandas_df = _check_passed_dfs(y_train_df, y_val_df_)
-
-            if not sorted_data:
-                if is_pandas_df:
-                    y_train_df = y_train_df.sort_values(['unique_id', 'ds'])
-                    y_val_df = y_val_df.sort_values(['unique_id', 'ds'])
-                else:
-                    y_train_df = y_train_df.sort_index()
-                    y_val_df = y_val_df.sort_index()
-
-        if errors is None:
-            pass
-            #calculate contribution_to_error(y_train_df, y_val_df)
-        else:
-            _check_valid_columns(errors, cols=['unique_id'], cols_index=['unique_id'])
-
-            best_models_count = errors.idxmin(axis=1).value_counts()
-            best_models_count = pd.Series(best_models_count, index=errors.columns)
-            loser_models = best_models_count[best_models_count.isna()].index.to_list()
-
-            if len(loser_models) > 0:
-                print('Models {} never win.'.format(' '.join(loser_models)))
-                print('Removing it...\n')
-                errors = errors.copy().drop(columns=loser_models)
-
-            self.contribution_to_error = errors.values
-            best_models = self.contribution_to_error.argmin(axis=1)
-
-
-        if feats is None:
-            feats, holdout_feats = self._tsfeatures(y_train_df, y_val_df, freq)
-        else:
-            assert holdout_feats is not None, "when passing feats you must provide holdout feats"
-
-        self.lgb = self._train(holdout_feats, best_models)
-
-        raw_score_ = self.lgb.predict(feats, raw_score=True)
-        self.raw_score_ = pd.DataFrame(raw_score_,
-                                       index=feats.index,
-                                       columns=errors.columns)
-
-        weights = softmax(raw_score_, axis=1)
-        self.weights_ = pd.DataFrame(weights,
-                                     index=feats.index,
-                                     columns=errors.columns)
-
-        if self.greedy_search:
-            performance = self.lgb.best_score['valid_1']['FFORMA-loss']
-            improvement = True
-            errors = copy.deepcopy(errors)
-            print(f'\nInitial performance: {performance}\n')
-            while improvement and errors.shape[1]>2:
-                model_to_remove = self.weights_.mean().nsmallest(1).index
-                print(f'Removing {model_to_remove}\n')
-                errors = errors.drop(columns=model_to_remove)
-                self.contribution_to_error = errors.values
-                best_models = self.contribution_to_error.argmin(axis=1)
-
-                new_lgb = self._train(holdout_feats, best_models)
-                performance_new_lgb = new_lgb.best_score['valid_1']['FFORMA-loss']
-                better_model = performance_new_lgb <= performance
-                if not better_model:
-                    print(f'\nImprovement not reached: {performance_new_lgb}')
-                    print('stopping greedy_search')
-                    improvement = False
-                else:
-                    performance = performance_new_lgb
-                    print(f'\nReached better performance {performance}\n')
-                    self.lgb = new_lgb
-
-                    raw_score_ = self.lgb.predict(feats, raw_score=True)
-                    self.raw_score_ = pd.DataFrame(raw_score_,
-                                                   index=feats.index,
-                                                   columns=errors.columns)
-
-                    weights = softmax(raw_score_, axis=1)
-                    self.weights_ = pd.DataFrame(weights,
-                                                 index=feats.index,
-                                                 columns=errors.columns)
-        self._fitted = True
-
-
-    def predict(self, y_hat_df, fforms=False):
-        """
         Parameters
         ----------
-        y_hat_df: pandas df
-            panel with columns unique_id, ds, {model} for each model to ensemble
+        X_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds'] and exogenous vars.
+        y_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
+        val_predictions: pandas df or None
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
+            Predictions for the validation set.
+            Use None to calculate on the fly.
+        features: pandas df or None
+            Pandas DataFrame with columns ['unique_id'] and the features.
+            Use None to calculate on the fly.
         """
-        assert self._fitted, "Model not fitted yet"
+        #TODO: cambiar este merge
+        self.full_df = X_df.merge(y_df, on=['unique_id','ds'], how='inner')
 
-        if fforms:
-            weights = (self.weights_.div(self.weights_.max(axis=1), axis=0) == 1)*1
-            name = 'fforms_prediction'
-        else:
-            weights = self.weights_
-            name = 'fforma_prediction'
-        fforma_preds = weights * y_hat_df
-        fforma_preds = fforma_preds.sum(axis=1)
-        fforma_preds.name = name
-        preds = pd.concat([y_hat_df, fforma_preds], axis=1)
+        self.train_df, self.val_df = self._validation_holdout(X_df=X_df, y_df=y_df, h=self.h)
 
-        return preds
+        print("="*29 + " Fitting Models " + "="*29)
+        if val_predictions is None:
+            val_predictions = self._fit_predict_base_models(base_models=self.base_models,
+                                                            train_df=self.train_df,
+                                                            val_df=self.val_df)
+        print("="*28 + " Computing Errors " + "="*28)
+        errors = self._compute_base_models_errors(predictions=val_predictions)
+
+        print("="*27 + " Computing Features " + "="*27)
+        if features is None:
+            features = self._compute_features()
+
+        return errors, features
+
+    def fit(self, X_df, y_df, val_predictions=None, features=None):
+        """Fits FFORMA using MetaLearner class.
+
+
+        Parameters
+        ----------
+        X_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds'] and exogenous vars.
+        y_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
+        val_predictions: pandas df or None
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
+            Predictions for the validation set.
+            Use None to calculate on the fly.
+        features: pandas df or None
+            Pandas DataFrame with columns ['unique_id'] and the features.
+            Use None to calculate on the fly.
+        """
+        self.errors, self.features = self.pre_fit(X_df=X_df, y_df=y_df,
+                                                  val_predictions=val_predictions,
+                                                  features=features)
+
+        best_models_count = self.errors.idxmin(axis=1).value_counts()
+        best_models_count = pd.Series(best_models_count, index=self.errors.columns)
+        loser_models = best_models_count[best_models_count.isna()].index.to_list()
+
+        if len(loser_models) > 0:
+            print('Models {} never win.'.format(' '.join(loser_models)))
+            print('Removing it...\n')
+            self.errors = self.errors.copy().drop(columns=loser_models)
+
+        contribution_to_error = self.errors.values
+        best_models = contribution_to_error.argmin(axis=1)
+
+        print('Training Meta Learner...')
+        meta_learner = MetaLearner(params=self.params,
+                                   contribution_to_error=contribution_to_error,
+                                   random_seed=self.random_seed)
+
+        meta_learner.fit(features=self.features, best_models=best_models,
+                         early_stopping_rounds=self.early_stopping_rounds,
+                         verbose_eval=False)
+
+        self.meta_learner_ = meta_learner
+
+    def predict(self, X_df, tmp=1, base_model_preds=None):
+        """Predicts FFORMA.
+
+
+        Parameters
+        ----------
+        X_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds'] and exogenous vars.
+        tmp: float
+
+        base_model_preds: pandas df or None
+            Pandas DataFrame with columns ['unique_id', 'ds'] and
+            predictions to ensemble.
+            Predictions for the validation set.
+            Use None to calculate on the fly.
+
+        Return
+        ------
+        pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y_hat']
+            where 'y_hat' denotes the fforma predictions.
+        """
+        check_is_fitted(self, 'meta_learner_')
+        #TODO: assert match X_df and self.full_df and features
+
+        if base_model_preds is None:
+            base_model_preds = self._fit_predict_base_models(base_models=self.base_models,
+                                                             train_df=self.full_df,
+                                                             val_df=X_df)
+            #base_model_preds = base_model_preds.drop(columns='Naive2') #TODO sacar esto cuando se pueda
+
+        weights = self.meta_learner_.predict(features=self.features, tmp=tmp)
+        weights = pd.DataFrame(weights,
+                               index=self.features.index,
+                               columns=self.errors.columns)
+
+        base_model_preds = base_model_preds.set_index('unique_id')
+        y_hat = weights * base_model_preds[self.base_models.keys()] #TODO sacar hardcodeado
+
+        y_hat_df = base_model_preds
+        y_hat_df['y_hat'] = y_hat.sum(axis=1)
+        y_hat_df = y_hat_df.reset_index()
+
+        return y_hat_df
