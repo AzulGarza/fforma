@@ -30,10 +30,10 @@ class MetaLearner(object):
                           order='F')
         preds_transformed = softmax(preds, axis=1)
 
-        weighted_avg_loss_func = (preds_transformed*self.contribution_to_error[y, :]).sum(axis=1).reshape((n_train, 1))
+        weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1).reshape((n_train, 1))
 
-        grad = preds_transformed*(self.contribution_to_error[y, :] - weighted_avg_loss_func)
-        hess = self.contribution_to_error[y,:]*preds_transformed*(1.0-preds_transformed) - grad*preds_transformed
+        grad = preds_transformed * (self.contribution_to_error[y, :] - weighted_avg_loss_func)
+        hess = self.contribution_to_error[y,:] * preds_transformed * (1.0 - preds_transformed) - grad * preds_transformed
         #hess = grad*(1 - 2*preds_transformed)
         return grad.flatten('F'), hess.flatten('F')
 
@@ -46,7 +46,7 @@ class MetaLearner(object):
                           self.contribution_to_error[y, :].shape,
                           order='F')
         preds_transformed = softmax(preds, axis=1)
-        weighted_avg_loss_func = (preds_transformed*self.contribution_to_error[y, :]).sum(axis=1)
+        weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1)
         fforma_loss = weighted_avg_loss_func.mean()
 
         return 'FFORMA-loss', fforma_loss, False
@@ -60,10 +60,10 @@ class MetaLearner(object):
             best_models_val, \
             indices_train, \
             indices_val = train_test_split(features,
-                                        best_models,
-                                        np.arange(features.shape[0]),
-                                        random_state=self.random_seed,
-                                        stratify=best_models)
+                                           best_models,
+                                           np.arange(features.shape[0]),
+                                           random_state=self.random_seed,
+                                           stratify=best_models)
 
         params = deepcopy(self.params)
         num_round = int(params.pop('n_estimators', 100))
@@ -89,5 +89,5 @@ class MetaLearner(object):
         """
         """
         scores = self.gbm_model.predict(features, raw_score=True)
-        weights = softmax(scores/tmp, axis=1)
+        weights = softmax(scores / tmp, axis=1)
         return weights

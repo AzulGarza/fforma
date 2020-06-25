@@ -136,7 +136,8 @@ class FFORMA(object):
 
         return errors, features
 
-    def fit(self, X_df, y_df, val_predictions=None, features=None):
+    def fit(self, X_df, y_df, val_predictions=None, features=None,
+            meta_learner=MetaLearner):
         """Fits FFORMA using MetaLearner class.
 
 
@@ -171,9 +172,9 @@ class FFORMA(object):
         best_models = contribution_to_error.argmin(axis=1)
 
         print('Training Meta Learner...')
-        meta_learner = MetaLearner(params=self.params,
-                                   contribution_to_error=contribution_to_error,
-                                   random_seed=self.random_seed)
+        meta_learner = meta_learner(params=self.params,
+                                    contribution_to_error=contribution_to_error,
+                                    random_seed=self.random_seed)
 
         meta_learner.fit(features=self.features, best_models=best_models,
                          early_stopping_rounds=self.early_stopping_rounds,
