@@ -22,14 +22,21 @@ class MetaModels:
     ----------
     models: dict
         Dictionary of models to train. Ej {'ARIMA': ARIMA()}
+    df_season: pandas df with columns ['unique_id', 'seasonality']
+        For each time series the particular seasonality to be used.
+        All models with seasonality attribute will consider this.
+        If df_season=None (default) initial seasonality is considered.
     scheduler: str
         Dask scheduler. See https://docs.dask.org/en/latest/setup/single-machine.html
         for details.
         Using "threads" can cause severe conflicts.
     """
 
-    def __init__(self, models, scheduler='processes'):
+    def __init__(self, models, df_season=None, scheduler='processes'):
         self.models = models
+        self.df_season = df_season
+        if self.df_season is not None:
+            self.df_season = self.df_season.set_index('unique_id')
         self.scheduler = scheduler
 
     def fit(self, y_panel_df):
@@ -46,6 +53,12 @@ class MetaModels:
             uid, y = ts
             y = y['y'].values
             name_model, model = deepcopy(meta_model)
+
+            if self.df_season is not None:
+                seasonality = self.df_season.loc[uid, 'seasonality']
+                if hasattr(model, 'seasonality'):
+                    setattr(model, 'seasonality', seasonality)
+
             fitted_model = dask.delayed(model.fit)(None, y) #TODO: correct None
             fitted_models.append(fitted_model)
             uids.append(uid)
@@ -69,7 +82,7 @@ class MetaModels:
         """
         check_is_fitted(self, 'fitted_models_')
 
-        y_hat_df = deepcopy(y_hat_df)#[['unique_id', 'ds']])
+        y_hat_df = deepcopy(y_hat_df)
 
         forecasts = []
         uids = []
@@ -80,7 +93,7 @@ class MetaModels:
             h = len(df)
             model = self.fitted_models_.loc[(uid, name_model)]
             model = model.item()
-            y_hat = dask.delayed(model.predict)(h)
+            y_hat = dask.delayed(model.predict)(df)
             forecasts.append(y_hat)
             uids.append(np.repeat(uid, h))
             dss.append(df['ds'])

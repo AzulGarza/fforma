@@ -4,6 +4,7 @@
 import numpy as np
 import pandas as pd
 
+from copy import deepcopy
 from tsfeatures.metrics import smape, mase, evaluate_panel
 
 ###############################################################################
@@ -42,8 +43,8 @@ def calc_errors(y_panel_df, y_insample_df, seasonality, benchmark_model='Naive2'
 
     model_names = set(y_panel_df.columns) - set(y_panel.columns)
 
-    y_panel = y_panel#.set_index('unique_id')
-    y_insample_df = y_insample_df#.set_index('unique_id')
+    y_panel = y_panel
+    y_insample_df = y_insample_df
 
     for model_name in model_names:
         errors_smape[model_name] = None

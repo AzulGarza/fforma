@@ -122,7 +122,10 @@ def seasonality_test(original_ts, ppy):
     for i in range(2, ppy):
         s = s + (acf(original_ts, i) ** 2)
 
-    limit = 1.645 * (sqrt((1 + 2 * s) / len(original_ts)))
+    if (1 + 2 * s) > 0:
+        limit = 1.645 * (sqrt((1 + 2 * s) / len(original_ts)))
+    else:
+        limit = 0
 
     return (abs(acf(original_ts, ppy))) > limit
 
@@ -220,13 +223,9 @@ class Naive(BaseEstimator, RegressorMixin):
     This benchmark model produces a forecast that is equal to
     the last observed value for a given time series.
     """
-    def __init__(self, h):
+    def __init__(self):
         """
-        h: int
-            forecast horizon, the number of times the last value
-            will be repeated
         """
-        self.h = h
 
     def fit(self, X, y):
         """
@@ -236,6 +235,7 @@ class Naive(BaseEstimator, RegressorMixin):
             train values of the time series
         """
         self.y_hat = [float(y[-1])]
+
         return self
 
     def predict(self, X):
@@ -247,7 +247,10 @@ class Naive(BaseEstimator, RegressorMixin):
             forecast for time horizon 'h' repeating the last
             value of y.
         """
-        y_hat = np.array(self.y_hat * self.h)
+        h = len(X)
+
+        y_hat = np.array(self.y_hat * h)
+
         return y_hat
 
 
@@ -258,7 +261,7 @@ class SeasonalNaive(BaseEstimator, RegressorMixin):
     the last observed value of the same season for a given time
     series.
     """
-    def __init__(self, h, seasonality):
+    def __init__(self, seasonality):
         """
         h: int
             forecast horizon, the number of times the last value
@@ -267,7 +270,6 @@ class SeasonalNaive(BaseEstimator, RegressorMixin):
             seasonality of the time series.
         """
         self.seasonality = seasonality
-        self.h = h
 
     def fit(self, X, y):
         """
@@ -277,6 +279,7 @@ class SeasonalNaive(BaseEstimator, RegressorMixin):
             train values of the time series
         """
         self.y_hat = y[-self.seasonality:].flatten()
+
         return self
 
     def predict(self, X):
@@ -288,10 +291,14 @@ class SeasonalNaive(BaseEstimator, RegressorMixin):
             forecast for time horizon 'h' repeating the last
             values for each season.
         """
-        repetitions = int(np.ceil(self.h/self.seasonality))
+        h = len(X)
+
+        repetitions = int(np.ceil(h / self.seasonality))
         y_hat = np.tile(self.y_hat, reps=repetitions)
-        y_hat = y_hat[:self.h]
-        assert len(y_hat)==self.h
+        y_hat = y_hat[:h]
+
+        assert len(y_hat) == h
+
         return y_hat
 
 
@@ -303,17 +310,14 @@ class Naive2(BaseEstimator, RegressorMixin):
     If the series is seasonal the model composes the predictions of Naive and SeasonalNaive,
     else the model predicts on the simple Naive.
     """
-    def __init__(self, h, seasonality):
+    def __init__(self, seasonality):
         """
         h: int
             forecast horizon
         seasonality: int
             seasonality of the time series.
         """
-        self.h = h
         self.seasonality = seasonality
-        self.sn_model = SeasonalNaive(h=self.h, seasonality=self.seasonality)
-        self.n_model = Naive(h=self.h)
 
     def fit(self, X, y):
         """
@@ -322,6 +326,9 @@ class Naive2(BaseEstimator, RegressorMixin):
         y: numpy array
             train values of the time series
         """
+        self.sn_model = SeasonalNaive(seasonality=self.seasonality)
+        self.n_model = Naive()
+
         y = y.flatten()
         seasonality_in = deseasonalize(y, ppy=self.seasonality)
         windows = int(np.ceil(len(y) / self.seasonality))
@@ -354,12 +361,8 @@ class RandomWalkDrift(BaseEstimator, RegressorMixin):
     of stationarity, by including a global linear trend.
     The predictions are given by the last observation 'drifted' by the trend.
     """
-    def __init__(self, h):
-        """
-        h: int
-            forecast horizon
-        """
-        self.h = h
+    def __init__(self):
+        pass
 
     def fit(self, X, y):
         """
@@ -368,11 +371,12 @@ class RandomWalkDrift(BaseEstimator, RegressorMixin):
         y: numpy array
             train values of the time series
         """
-        self.drift = (float(y[-1]) - float(y[0]))/(len(y)-1)
+        self.drift = (float(y[-1]) - float(y[0])) / (len(y) - 1)
         self.naive = [float(y[-1])]
+
         return self
 
-    def predict(self, h):
+    def predict(self, X):
         """
         X: numpy array
             time series covariates (for pipeline compatibility)
@@ -380,9 +384,13 @@ class RandomWalkDrift(BaseEstimator, RegressorMixin):
         y_hat: numpy array
             forecast for time horizon 'h'.
         """
-        naive = np.array(self.naive * self.h)
-        drift = self.drift * np.array(range(1,self.h+1))
+        h = len(X)
+
+        naive = np.array(self.naive * h)
+
+        drift = self.drift * np.array(range(1, h + 1))
         y_hat = naive + drift
+
         return y_hat
 
 
@@ -416,8 +424,7 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
     for each season of the time series. The prediction is based on the average of
     the last n_window observations for each season.
     """
-    def __init__(self, h, seasonality, n_seasons):
-        self.h = h
+    def __init__(self, seasonality, n_seasons):
         self.seasonality = seasonality
         self.n_seasons = n_seasons
 
@@ -425,14 +432,20 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
         n_obs = self.seasonality * self.n_seasons
         y_vals = y[-n_obs:]
         self.season_vals_ = np.empty(self.seasonality)
+
         for i in range(self.seasonality):
             sl = slice(i, n_obs, self.seasonality)
             self.season_vals_[i] = np.mean(y_vals[sl])
+
         return self
 
     def predict(self, X):
-        idxs = [i % self.seasonality for i in range(self.h)]
+        h = len(X)
+
+        idxs = [i % self.seasonality for i in range(h)]
+
         preds = self.season_vals_[idxs]
+
         return preds
 
 

@@ -43,7 +43,7 @@ class FFORMA(object):
         Default 1.
     """
 
-    def __init__(self, params, h, seasonality, base_models=None, metric='owa',
+    def __init__(self, params, h, seasonality, dict_freqs=None, base_models=None, metric='owa',
                  early_stopping_rounds=10, threads=None, random_seed=1):
 
         self.h = h
@@ -51,10 +51,16 @@ class FFORMA(object):
         self.random_seed = random_seed
         self.early_stopping_rounds = early_stopping_rounds
 
+        self.dict_freqs = dict_freqs if dict_freqs is not None else {'D': 1, 'M': 12,
+                                                                     'Q': 4, 'Y': 1,
+                                                                     'Q-DEC': 4}
+
         if base_models is None:
-            self.base_models = {'SeasonalNaive': SeasonalNaive(h, seasonality),
-                                'Naive2': Naive2(h, seasonality),
-                                'RandomWalkDrift': RandomWalkDrift(h)}
+            self.base_models = {'SeasonalNaive': SeasonalNaive(seasonality),
+                                'Naive2': Naive2(seasonality),
+                                'RandomWalkDrift': RandomWalkDrift()}
+        else:
+            self.base_models = base_models
 
         assert metric in AVAILABLE_METRICS, "Metric not specified in metrics.py"
 
@@ -76,9 +82,9 @@ class FFORMA(object):
 
         return train, val
 
-    def _fit_predict_base_models(self, base_models, train_df, val_df):
+    def _fit_predict_base_models(self, base_models, train_df, val_df, df_season):
         """Fits base models using MetaModels class."""
-        meta_models = MetaModels(base_models)
+        meta_models = MetaModels(base_models, df_season)
         meta_models.fit(train_df)
         predictions = meta_models.predict(val_df)
 
@@ -86,16 +92,19 @@ class FFORMA(object):
 
     def _compute_base_models_errors(self, predictions):
         """Calculates validation errrors."""
+        seasonality = 1 if self.seasonality is None else self.seasonality
+
         errors = calc_errors(y_panel_df=predictions,
                              y_insample_df=self.train_df,
-                             seasonality=self.seasonality)
+                             seasonality=seasonality)
 
         return errors
 
     def _compute_features(self):
         """Wrapper of tsfeatures."""
         features = tsfeatures(ts=self.train_df,
-                              freq=self.seasonality)
+                              freq=self.seasonality,
+                              dict_freqs=self.dict_freqs)
 
         return features
 
@@ -124,9 +133,18 @@ class FFORMA(object):
 
         print("="*29 + " Fitting Models " + "="*29)
         if val_predictions is None:
+            if self.seasonality is None:
+                df_season = self.full_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
+                df_season = df_season.rename('freq').reset_index()
+                df_season['seasonality'] = df_season['freq'].replace(self.dict_freqs)
+                self.df_season = df_season
+            else:
+                self.df_season = None
+
             val_predictions = self._fit_predict_base_models(base_models=self.base_models,
                                                             train_df=self.train_df,
-                                                            val_df=self.val_df)
+                                                            val_df=self.val_df,
+                                                            df_season=self.df_season)
         print("="*28 + " Computing Errors " + "="*28)
         errors = self._compute_base_models_errors(predictions=val_predictions)
 
@@ -210,8 +228,8 @@ class FFORMA(object):
         if base_model_preds is None:
             base_model_preds = self._fit_predict_base_models(base_models=self.base_models,
                                                              train_df=self.full_df,
-                                                             val_df=X_df)
-            #base_model_preds = base_model_preds.drop(columns='Naive2') #TODO sacar esto cuando se pueda
+                                                             val_df=X_df,
+                                                             df_season=self.df_season)
 
         weights = self.meta_learner_.predict(features=self.features, tmp=tmp)
         weights = pd.DataFrame(weights,
@@ -219,7 +237,7 @@ class FFORMA(object):
                                columns=self.errors.columns)
 
         base_model_preds = base_model_preds.set_index('unique_id')
-        y_hat = weights * base_model_preds[self.base_models.keys()] #TODO sacar hardcodeado
+        y_hat = weights * base_model_preds[self.base_models.keys()]
 
         y_hat_df = base_model_preds
         y_hat_df['y_hat'] = y_hat.sum(axis=1)
