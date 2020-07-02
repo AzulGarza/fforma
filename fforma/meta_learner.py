@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import time
 import torch
 import torch.nn as nn
 import numpy as np
@@ -11,6 +12,10 @@ from copy import deepcopy
 from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
+
+from fforma.utils.losses import RMSSETorch
+
+softmax = nn.Softmax(1)
 
 
 class MetaLearner(object):
@@ -124,42 +129,62 @@ class NeuralNetwork(nn.Module):
         x = self.layers(x)
         return x
 
-class RMSSETorch(nn.Module):
-    def __init__(self, actual_y, preds_y_val, h, weights=None):
-        super().__init__()
-        self.actual_y = actual_y
-        self.preds_y_val = preds_y_val
-        self.h = h
-        self.weights = weights
-        self.softmax = nn.Softmax(1)
-
-
-    def forward(self, output, labels):
-        weights_output = self.softmax(output)
-        weights_output = weights_output.repeat(1, self.h).reshape(self.preds_y_val.shape)
-        ensemble = weights_output * self.preds_y_val
-        ensemble = ensemble.sum(2)
-        loss = (self.actual_y - ensemble) ** 2
-        loss = loss.mean(1) ** (1 / 2) * self.weights if self.weights is not None else loss.mean(1) ** (1 / 2)
-        loss = loss.sum() if self.weights is not None else loss.mean()
-
-        return loss
-
 class MetaLearnerNN(object):
-    """
+    """Evaluates ensemble model on the fly using neural networks.
+
+    Parameters
+    ----------
+    actual_y: numpy array
+        Actual values of the time series.
+        Numpy array of size N * h
+    preds_y_val: numpy array
+        Model predictions to ensemble.
+        Numpy array of size N * h * m.
+    h: int
+        Horizon of the validation set.
+    weights: numpy array
+        Weighted errors.
+    loss_function: pytorch loss function
+
+    random_seed:
+
+
 
     """
-    def __init__(self, actual_y, preds_y_val, h, weights=None, random_seed=1):
-        #self.params = params
+    def __init__(self, params, actual_y, preds_y_val, h, weights=None,
+                 loss_function=RMSSETorch, random_seed=1, use_softmax=False):
+        self.params = params
         self.actual_y = torch.tensor(actual_y)
         self.preds_y_val = torch.tensor(preds_y_val)
         self.h = h
         self.weights = torch.tensor(weights) if weights is not None else weights
         self.random_seed = random_seed
-        self.loss_function = RMSSETorch
+        self.loss_function = loss_function
+        self.use_softmax = use_softmax
 
-    def fit(self, features, best_models):
+    def get_ensemble(self, margins, preds_y_val):
+        h = preds_y_val.shape[1]
+
+        if self.use_softmax:
+            weights_output = softmax(margins)
+        else:
+            weights_output = margins
+
+        weights_output = weights_output.repeat(1, h).reshape(preds_y_val.shape)
+
+        ensemble = weights_output * preds_y_val
+        ensemble = ensemble.sum(2)
+
+        return ensemble
+
+    def fit(self, features, best_models, verbose=True):
         """
+        Parameters
+        ----------
+        features: numpy array
+            Numpy array of size N * f.
+        best_models: numpy array
+            Numpy array of size N.
         """
         feats_train, \
             feats_val, \
@@ -168,50 +193,86 @@ class MetaLearnerNN(object):
             indices_train, \
             indices_val = train_test_split(torch.tensor(features, dtype=torch.float),
                                            torch.tensor(best_models, dtype=torch.float),
-                                           np.arange(features.shape[0]),
+                                           torch.tensor(np.arange(features.shape[0])),
                                            random_state=self.random_seed,
                                            stratify=best_models)
 
-        train_actual_y = self.actual_y[indices_train]
-        val_actual_y = self.actual_y[indices_val]
+        train_loss = deepcopy(self.loss_function)
+        val_loss = deepcopy(self.loss_function)
 
-        train_preds_y_val = self.preds_y_val[indices_train]
-        val_preds_y_val = self.preds_y_val[indices_val]
+        train_data = torch.utils.data.TensorDataset(feats_train, best_models_train,
+                                                    indices_train)
 
-        train_weights = self.weights[indices_train] if self.weights is not None else self.weights
-        val_weights = self.weights[indices_val] if self.weights is not None else self.weights
+        if self.params['freq_of_test'] > 0:
+            val_actual_y = self.actual_y[indices_val]
+            val_preds_y_val = self.preds_y_val[indices_val]
+            val_weights = self.weights[indices_val] if self.weights is not None else self.weights
 
-        train_loss = self.loss_function(train_actual_y, train_preds_y_val,
-                                        self.h, train_weights)
-        val_loss = self.loss_function(val_actual_y, val_preds_y_val, self.h, val_weights)
+        self.model = NeuralNetwork(num_numerical_cols=features.shape[1],
+                                   output_size=len(np.unique(best_models)),
+                                   layers=self.params['layers'],
+                                   p=self.params['dropout'])
+
+        optimizer = torch.optim.Adam(self.model.parameters(),
+                                     betas=(0.9, 0.999),
+                                     lr=self.params['learning_rate'],
+                                     eps=self.params['gradient_eps'],
+                                     weight_decay=self.params['weight_decay'])
+
+        train_loader = torch.utils.data.DataLoader(train_data,
+                                                   batch_size=self.params['batch_size'])
+        #aggregated_losses = []
+        #aggregated_val_losses = []
+
+        for epoch in range(self.params['epochs']):
+
+            start = time.time()
+            epoch_losses = []
+            for i, data in enumerate(train_loader):
+                inputs, labels, index_train = data
+
+                train_actual_y = self.actual_y[index_train]
+                #val_actual_y = self.actual_y[indices_val]
+                train_preds_y_val = self.preds_y_val[index_train]
+                #val_preds_y_val = self.preds_y_val[indices_val]
+                train_weights = self.weights[index_train] if self.weights is not None else self.weights
+                #val_weights = self.weights[indices_val] if self.weights is not None else self.weights
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward + backward + optimize
+                margins = self.model(inputs)
+
+                ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
+                loss = train_loss(train_actual_y, ensemble_y_pred)
+
+                loss.backward()
+                optimizer.step()
+                #loss_val = val_loss(y_pred_val, best_models_val)
 
 
-        self.model = NeuralNetwork(features.shape[1], len(np.unique(best_models)),
-                              [10, 10, 10, 10], p=0.25)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+                epoch_losses.append(loss.item())
+                #aggregated_losses.append(single_loss)
+                #aggregated_val_losses.append(single_loss_val)
 
-        epochs = 500
-        aggregated_losses = []
-        aggregated_val_losses = []
+                # print statistics
+                #if i % 50 == 1:
+                #    print(f'[{epoch + 1: 3}, {i + 1: 3}] loss: {np.mean(epoch_losses): 10.8f}')
 
-        for i in range(epochs):
-            i += 1
-            y_pred, y_pred_val = self.model(feats_train), self.model(feats_val)
+            self.train_loss = np.sum(epoch_losses) if self.weights is not None else np.mean(epoch_losses)
 
-            single_loss = train_loss(y_pred, best_models_train)
-            single_loss_val = val_loss(y_pred_val, best_models_val)
+            if verbose:
+                print(f"========= Epoch {epoch} finished =========")
+                print(f"Training time: {round(time.time() - start, 5)}")
+                print(f"Training loss: {self.train_loss:.5f}")
 
-            aggregated_losses.append(single_loss)
-            aggregated_val_losses.append(single_loss_val)
+            if (self.params['freq_of_test'] > 0) and (epoch % self.params['freq_of_test'] == 0):
+                margins = self.model(feats_val)
+                ensemble_y_pred_test = self.get_ensemble(margins, val_preds_y_val)
+                self.test_loss = val_loss(val_actual_y, ensemble_y_pred_test)
+                print(f"Testing loss: {self.test_loss:.5f}")
 
-            if i % 100 == 1:
-                print(f'epoch: {i:3} loss: {single_loss.item():10.8f} val_loss: {single_loss_val.item():10.8f}')
 
-            optimizer.zero_grad()
-            single_loss.backward()
-            optimizer.step()
-
-        print(f'epoch: {i:3} loss: {single_loss.item():10.8f} val_loss: {single_loss_val.item():10.8f}')
 
         return self
 
@@ -220,5 +281,10 @@ class MetaLearnerNN(object):
         """
         features_tensor = torch.tensor(features, dtype=torch.float)
         scores = self.model(features_tensor)
-        weights = nn.Softmax(1)(scores / tmp).detach().numpy()
+
+        if self.use_softmax:
+            weights = nn.Softmax(1)(scores / tmp).detach().numpy()
+        else:
+            weights = scores.detach().numpy()
+
         return weights
