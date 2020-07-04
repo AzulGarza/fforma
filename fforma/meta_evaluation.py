@@ -66,8 +66,8 @@ def calc_errors(y_panel_df, y_insample_df, seasonality, benchmark_model='Naive2'
     errors_smape = errors_smape.drop(columns=benchmark_model).set_index('unique_id')
     errors_mase = errors_mase.drop(columns=benchmark_model).set_index('unique_id')
 
-    errors = errors_smape/mean_mase_benchmark + errors_mase/mean_smape_benchmark
-    errors = 0.5*errors
+    errors = errors_smape / mean_mase_benchmark + errors_mase / mean_smape_benchmark
+    errors = 0.5 * errors
 
     return errors
 
@@ -82,7 +82,7 @@ def get_prediction_panel(y_panel_df, h, freq):
         date = df['ds'].values.item()
         unique_id = df['unique_id'].values.item()
 
-        date_range = pd.date_range(date, periods=4, freq='D')
+        date_range = pd.date_range(date, periods=h, freq=freq)
         df_ds = pd.DataFrame.from_dict({'ds': date_range})
         df_ds['unique_id'] = unique_id
         predict_panel.append(df_ds[['unique_id', 'ds']])
