@@ -6,6 +6,7 @@ import pandas as pd
 
 import dask
 
+from dask.diagnostics import ProgressBar
 from collections import ChainMap
 from functools import partial
 from itertools import product
@@ -58,13 +59,17 @@ class MetaModels:
                 seasonality = self.df_season.loc[uid, 'seasonality']
                 if hasattr(model, 'seasonality'):
                     setattr(model, 'seasonality', seasonality)
+                if hasattr(model, 'freq'):
+                    setattr(model, 'freq', seasonality)
 
             fitted_model = dask.delayed(model.fit)(None, y) #TODO: correct None
             fitted_models.append(fitted_model)
             uids.append(uid)
             name_models.append(name_model)
 
-        fitted_models = dask.delayed(fitted_models).compute(scheduler=self.scheduler)
+        task = dask.delayed(fitted_models)
+        with ProgressBar():
+            fitted_models = task.compute(scheduler=self.scheduler)
 
         fitted_models = pd.DataFrame.from_dict({'unique_id': uids,
                                                 'model': name_models,
@@ -99,7 +104,9 @@ class MetaModels:
             dss.append(df['ds'])
             name_models.append(np.repeat(name_model, h))
 
-        forecasts = dask.delayed(forecasts).compute(scheduler=self.scheduler)
+        task = dask.delayed(forecasts)
+        with ProgressBar():
+            forecasts = task.compute(scheduler=self.scheduler)
         forecasts = zip(uids, dss, name_models, forecasts)
 
         forecasts_df = []
