@@ -13,7 +13,7 @@ from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
 
-from fforma.utils.losses import RMSSETorch
+from tsfeatures.metrics import SMAPE1Loss
 
 softmax = nn.Softmax(1)
 
@@ -166,7 +166,7 @@ class MetaLearnerNN(object):
 
         self.random_seed = random_seed
 
-        self.loss_function = self.params.pop('loss_function', RMSSETorch)
+        self.loss_function = self.params.pop('loss_function', SMAPE1Loss)
         self.use_softmax = self.params.pop('use_softmax', False)
 
     def get_ensemble(self, margins, preds_y_val):
@@ -201,20 +201,15 @@ class MetaLearnerNN(object):
 
         feats_train, \
             feats_val, \
-            best_models_train, \
-            best_models_val, \
             indices_train, \
             indices_val = train_test_split(torch.tensor(X, dtype=torch.float),
-                                           torch.tensor(best_models, dtype=torch.float),
                                            torch.tensor(np.arange(X.shape[0])),
-                                           random_state=self.random_seed,
-                                           stratify=best_models)
+                                           random_state=self.random_seed)
 
         train_loss = deepcopy(self.loss_function)
         val_loss = deepcopy(self.loss_function)
 
-        train_data = torch.utils.data.TensorDataset(feats_train, best_models_train,
-                                                    indices_train)
+        train_data = torch.utils.data.TensorDataset(feats_train, indices_train)
 
         if self.params['freq_of_test'] > 0:
             val_actual_y = self.actual_y[indices_val]
@@ -242,7 +237,7 @@ class MetaLearnerNN(object):
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
-                inputs, labels, index_train = data
+                inputs, index_train = data
 
                 train_actual_y = self.actual_y[index_train]
                 #val_actual_y = self.actual_y[indices_val]
