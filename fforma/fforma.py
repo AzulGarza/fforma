@@ -43,13 +43,17 @@ class FFORMA(object):
         Default 1.
     """
 
-    def __init__(self, params, h, seasonality, dict_freqs=None, base_models=None, metric='owa',
-                 early_stopping_rounds=10, threads=None, random_seed=1):
+    def __init__(self, params, h, seasonality, dict_freqs=None, base_models=None,
+                 meta_learner=MetaLearner,
+                 metric='owa',
+                 early_stopping_rounds=10, threads=None, random_seed=1,
+                 benchmark_model='Naive2'):
 
         self.h = h
         self.seasonality = seasonality
         self.random_seed = random_seed
         self.early_stopping_rounds = early_stopping_rounds
+        self.meta_learner = meta_learner
 
         self.dict_freqs = dict_freqs if dict_freqs is not None else {'D': 1, 'M': 12,
                                                                      'Q': 4, 'Y': 1,
@@ -74,41 +78,46 @@ class FFORMA(object):
         }
 
         self.params = {**params, **init_params}
+        self.benchmark_model = benchmark_model
+        self.df_season = None
 
-    def _validation_holdout(self, X_df, y_df, h):
+    def _validation_holdout(self, X_df, y_df):
         """Splits the data in train and validation sets."""
-        val = y_df.groupby('unique_id').tail(h)
-        train = y_df.groupby('unique_id').apply(lambda df: df.head(-h)).reset_index(drop=True)
+        val = y_df.groupby('unique_id').tail(self.h)
+        train = y_df.groupby('unique_id').apply(lambda df: df.head(-self.h)).reset_index(drop=True)
 
         return train, val
 
-    def _fit_predict_base_models(self, base_models, train_df, val_df, df_season):
+    def _fit_predict_base_models(self, train_df, val_df):
         """Fits base models using MetaModels class."""
-        meta_models = MetaModels(base_models, df_season)
+        meta_models = MetaModels(self.base_models, self.df_season)
+        print('Fitting...')
         meta_models.fit(train_df)
+        print('Predicting...')
         predictions = meta_models.predict(val_df)
 
         return predictions
 
-    def _compute_base_models_errors(self, predictions):
+    def _compute_base_models_errors(self, predictions, insample):
         """Calculates validation errrors."""
         seasonality = 1 if self.seasonality is None else self.seasonality
 
         errors = calc_errors(y_panel_df=predictions,
-                             y_insample_df=self.train_df,
-                             seasonality=seasonality)
+                             y_insample_df=insample,
+                             seasonality=seasonality,
+                             benchmark_model=self.benchmark_model)
 
         return errors
 
-    def _compute_features(self):
+    def _compute_features(self, df):
         """Wrapper of tsfeatures."""
-        features = tsfeatures(ts=self.train_df,
+        features = tsfeatures(ts=df,
                               freq=self.seasonality,
                               dict_freqs=self.dict_freqs)
 
         return features
 
-    def pre_fit(self, X_df, y_df, val_predictions, features):
+    def pre_fit(self, X_df, y_df, val_predictions=None, errors=None, features=None):
         """Calculates errors and features if needed.
 
 
@@ -127,35 +136,34 @@ class FFORMA(object):
             Use None to calculate on the fly.
         """
         #TODO: cambiar este merge
-        self.full_df = X_df.merge(y_df, on=['unique_id','ds'], how='inner')
+        #full_df = X_df.merge(y_df, on=['unique_id','ds'], how='inner')
 
-        self.train_df, self.val_df = self._validation_holdout(X_df=X_df, y_df=y_df, h=self.h)
+        train_df, val_df = self._validation_holdout(X_df=X_df, y_df=y_df)
 
         print("="*29 + " Fitting Models " + "="*29)
         if val_predictions is None:
             if self.seasonality is None:
-                df_season = self.full_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
+                df_season = full_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
                 df_season = df_season.rename('freq').reset_index()
                 df_season['seasonality'] = df_season['freq'].replace(self.dict_freqs)
                 self.df_season = df_season
             else:
                 self.df_season = None
 
-            val_predictions = self._fit_predict_base_models(base_models=self.base_models,
-                                                            train_df=self.train_df,
-                                                            val_df=self.val_df,
-                                                            df_season=self.df_season)
+            val_predictions = self._fit_predict_base_models(train_df=train_df,
+                                                            val_df=val_df)
         print("="*28 + " Computing Errors " + "="*28)
-        errors = self._compute_base_models_errors(predictions=val_predictions)
+        if errors is None:
+            errors = self._compute_base_models_errors(predictions=val_predictions,
+                                                      insample=train_df)
 
         print("="*27 + " Computing Features " + "="*27)
         if features is None:
-            features = self._compute_features()
+            features = self._compute_features(df=train_df)
 
-        return errors, features
+        return errors, features, val_predictions, train_df, val_df, y_df
 
-    def fit(self, X_df, y_df, val_predictions=None, features=None,
-            meta_learner=MetaLearner):
+    def fit(self, X_df, y_df, val_predictions=None, errors=None, features=None):
         """Fits FFORMA using MetaLearner class.
 
 
@@ -173,9 +181,12 @@ class FFORMA(object):
             Pandas DataFrame with columns ['unique_id'] and the features.
             Use None to calculate on the fly.
         """
-        self.errors, self.features = self.pre_fit(X_df=X_df, y_df=y_df,
-                                                  val_predictions=val_predictions,
-                                                  features=features)
+        self.errors, self.features, self.val_predictions, \
+            self.train_df, self.val_df, \
+                self.full_df = self.pre_fit(X_df=X_df, y_df=y_df,
+                                            val_predictions=val_predictions,
+                                            errors=errors,
+                                            features=features)
 
         best_models_count = self.errors.idxmin(axis=1).value_counts()
         best_models_count = pd.Series(best_models_count, index=self.errors.columns)
@@ -190,9 +201,12 @@ class FFORMA(object):
         best_models = contribution_to_error.argmin(axis=1)
 
         print('Training Meta Learner...')
-        meta_learner = meta_learner(params=self.params,
-                                    contribution_to_error=contribution_to_error,
-                                    random_seed=self.random_seed)
+        meta_learner = self.meta_learner(params=self.params,
+                                         y_df=self.val_df,
+                                         val_predictions=self.val_predictions[self.base_models.keys()],
+                                         h=self.h,
+                                         contribution_to_error=contribution_to_error,
+                                         random_seed=self.random_seed)
 
         meta_learner.fit(features=self.features, best_models=best_models,
                          early_stopping_rounds=self.early_stopping_rounds,
@@ -226,15 +240,14 @@ class FFORMA(object):
         #TODO: assert match X_df and self.full_df and features
 
         if base_model_preds is None:
-            base_model_preds = self._fit_predict_base_models(base_models=self.base_models,
-                                                             train_df=self.full_df,
-                                                             val_df=X_df,
-                                                             df_season=self.df_season)
+            base_model_preds = self._fit_predict_base_models(train_df=self.full_df,
+                                                             val_df=X_df)
 
         weights = self.meta_learner_.predict(features=self.features, tmp=tmp)
+
         weights = pd.DataFrame(weights,
                                index=self.features.index,
-                               columns=self.errors.columns)
+                               columns=self.base_models.keys())
 
         base_model_preds = base_model_preds.set_index('unique_id')
         y_hat = weights * base_model_preds[self.base_models.keys()]
