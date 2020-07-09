@@ -12,6 +12,7 @@ from copy import deepcopy
 from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import scale
 
 from tsfeatures.metrics import SMAPE1Loss
 
@@ -105,7 +106,8 @@ class MetaLearner(object):
 
 class NeuralNetwork(nn.Module):
 
-    def __init__(self, num_numerical_cols, output_size, layers, p=0.4):
+    def __init__(self, num_numerical_cols, output_size, layers, p=0.4,
+                 use_softmax=False):
         super().__init__()
         self.batch_norm_num = nn.BatchNorm1d(num_numerical_cols)
 
@@ -121,11 +123,13 @@ class NeuralNetwork(nn.Module):
 
         all_layers.append(nn.Linear(layers[-1], output_size))
 
+        if use_softmax:
+            all_layers.append(nn.Softmax(dim=1))
+
         self.layers = nn.Sequential(*all_layers)
 
     def forward(self, x_numerical):
         x = self.batch_norm_num(x_numerical)
-        #x = torch.cat([x, x_numerical], 1)
         x = self.layers(x)
         return x
 
@@ -155,10 +159,10 @@ class MetaLearnerNN(object):
         self.params = deepcopy(params)
         self.n_series, = y_df['unique_id'].unique().shape
         self.h = h
-        self.n_models, = val_predictions.drop(['unique_id', 'ds', 'y'], 1).columns.shape
+        self.n_models = val_predictions.columns.size
 
         actual_y = y_df['y'].values.reshape((self.n_series, self.h))
-        preds_y_val = val_predictions.drop(columns=['unique_id', 'ds', 'y'])
+        preds_y_val = val_predictions
         preds_y_val = preds_y_val.values.reshape((self.n_series, self.h, self.n_models))
 
         self.actual_y = torch.tensor(actual_y)
@@ -170,10 +174,6 @@ class MetaLearnerNN(object):
         self.use_softmax = self.params.pop('use_softmax', False)
 
     def get_ensemble(self, margins, preds_y_val):
-        if self.use_softmax:
-            weights_output = softmax(margins)
-        else:
-            weights_output = margins
 
         weights_output = weights_output.repeat(1, self.h).reshape(preds_y_val.shape)
 
@@ -195,9 +195,7 @@ class MetaLearnerNN(object):
         """
         X = features.values
         X[X != X] = 0
-        X = (X - X.mean()) / X.std()
-
-
+        X = scale(X)
 
         feats_train, \
             feats_val, \
@@ -214,12 +212,12 @@ class MetaLearnerNN(object):
         if self.params['freq_of_test'] > 0:
             val_actual_y = self.actual_y[indices_val]
             val_preds_y_val = self.preds_y_val[indices_val]
-            #val_weights = self.weights[indices_val] if self.weights is not None else self.weights
 
         self.model = NeuralNetwork(num_numerical_cols=features.shape[1],
                                    output_size=self.n_models,
                                    layers=self.params['layers'],
-                                   p=self.params['dropout'])
+                                   p=self.params['dropout'],
+                                   use_softmax=self.use_softmax)
 
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      betas=(0.9, 0.999),
@@ -229,8 +227,6 @@ class MetaLearnerNN(object):
 
         train_loader = torch.utils.data.DataLoader(train_data,
                                                    batch_size=self.params['batch_size'])
-        #aggregated_losses = []
-        #aggregated_val_losses = []
 
         for epoch in range(self.params['epochs']):
 
@@ -240,34 +236,21 @@ class MetaLearnerNN(object):
                 inputs, index_train = data
 
                 train_actual_y = self.actual_y[index_train]
-                #val_actual_y = self.actual_y[indices_val]
                 train_preds_y_val = self.preds_y_val[index_train]
-                #val_preds_y_val = self.preds_y_val[indices_val]
-                #train_weights = self.weights[index_train] if self.weights is not None else self.weights
-                #val_weights = self.weights[indices_val] if self.weights is not None else self.weights
                 # zero the parameter gradients
                 optimizer.zero_grad()
-
                 # forward + backward + optimize
                 margins = self.model(inputs)
-
                 ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
+
                 loss = train_loss(train_actual_y, ensemble_y_pred)
-
                 loss.backward()
-                optimizer.step()
-                #loss_val = val_loss(y_pred_val, best_models_val)
 
+                optimizer.step()
 
                 epoch_losses.append(loss.item())
-                #aggregated_losses.append(single_loss)
-                #aggregated_val_losses.append(single_loss_val)
 
-                # print statistics
-                #if i % 50 == 1:
-                #    print(f'[{epoch + 1: 3}, {i + 1: 3}] loss: {np.mean(epoch_losses): 10.8f}')
-
-            self.train_loss = np.mean(epoch_losses) # if self.weights is not None else np.mean(epoch_losses)
+            self.train_loss = np.mean(epoch_losses)
 
             if verbose_eval:
                 print(f"========= Epoch {epoch} finished =========")
@@ -287,14 +270,11 @@ class MetaLearnerNN(object):
         """
         X = features.values
         X[X != X] = 0
-        X = (X - X.mean()) / X.std()
+        X = scale(X)
 
         features_tensor = torch.tensor(X, dtype=torch.float)
         scores = self.model(features_tensor)
 
-        if self.use_softmax:
-            weights = nn.Softmax(1)(scores / tmp).detach().numpy()
-        else:
-            weights = scores.detach().numpy()
+        weights = scores.detach().numpy()
 
         return weights
