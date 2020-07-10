@@ -66,7 +66,7 @@ def maybe_download_decompress(directory):
 
     print('Successfully decompressed ', decompressed_data_directory)
 
-def prepare_fforma_data(directory):
+def prepare_fforma_data(directory, dataset_name=None):
 
     #Check downloaded data
     maybe_download_decompress(directory)
@@ -81,5 +81,16 @@ def prepare_fforma_data(directory):
 
     feats_test = pd.read_csv(directory + '/processed_data/test-features.csv')
     X_models_test = pd.read_csv(directory + '/processed_data/test-ff.csv')
+
+    if dataset_name is not None:
+        kind = dataset_name[0]
+
+        feats_train = feats_train[feats_train['unique_id'].str.startswith(kind)]
+        X_models_train = X_models_train[X_models_train['unique_id'].str.startswith(kind)]
+        y_models_train = y_models_train[y_models_train['unique_id'].str.startswith(kind)]
+
+        feats_test = feats_test[feats_test['unique_id'].str.startswith(kind)]
+        X_models_test = X_models_test[X_models_test['unique_id'].str.startswith(kind)]
+
 
     return feats_train, X_models_train, y_models_train, feats_test, X_models_test
