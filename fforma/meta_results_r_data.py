@@ -66,16 +66,30 @@ def maybe_download_decompress(directory):
 
     print('Successfully decompressed ', decompressed_data_directory)
 
+def r_data_already_present(directory):
+    needed_r_data = ('/processed_data/train-features.csv',
+                     '/processed_data/train-ff.csv',
+                     '/processed_data/train-xx.csv',
+                     '/processed_data/test-features.csv',
+                     '/processed_data/test-ff.csv')
+
+    present = [os.path.exists(directory + dir) for dir in needed_r_data]
+
+    present = all(present)
+
+    return present
+
 def prepare_fforma_data(directory, dataset_name=None):
 
     #Check downloaded data
     maybe_download_decompress(directory)
 
     #Prepare data from R
-    cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
-    res_r = os.system(cmd)
+    if not r_data_already_present(directory):
+        cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
+        res_r = os.system(cmd)
 
-    assert res_r == 0, 'Some error happened with R processing'
+        assert res_r == 0, 'Some error happened with R processing'
 
     feats_train = pd.read_csv(directory + '/processed_data/train-features.csv')
     X_models_train = pd.read_csv(directory + '/processed_data/train-ff.csv')
