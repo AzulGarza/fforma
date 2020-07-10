@@ -184,7 +184,8 @@ class MetaLearnerNN(object):
 
         return ensemble
 
-    def fit(self, features, best_models, early_stopping_rounds, verbose_eval=True):
+    def fit(self, features, best_models=None,
+            early_stopping_rounds=None, verbose_eval=True):
         """
         Parameters
         ----------
