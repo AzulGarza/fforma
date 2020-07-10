@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import argparse
+import os
 
 import pandas as pd
 
@@ -36,6 +37,9 @@ def main(args):
     dataset_name = args.dataset
     directory = args.directory
     hyndman_data = directory + '/hyndman_data'
+
+    if not os.path.exists(hyndman_data):
+        os.mkdir(hyndman_data)
     # ## Meta results from R (hyndman, et al)
     feats_train, X_models_train, \
         y_models_train, feats_test, \
