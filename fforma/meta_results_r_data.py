@@ -72,7 +72,7 @@ def prepare_fforma_data(directory, dataset_name=None):
     maybe_download_decompress(directory)
 
     #Prepare data from R
-    cmd = f'Rscript prepare_data_m4.R "{directory}"'
+    cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
     os.system(cmd)
 
     feats_train = pd.read_csv(directory + '/processed_data/train-features.csv')
