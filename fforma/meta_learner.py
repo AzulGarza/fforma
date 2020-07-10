@@ -213,6 +213,8 @@ class MetaLearnerNN(object):
             val_actual_y = self.actual_y[indices_val]
             val_preds_y_val = self.preds_y_val[indices_val]
 
+        torch.manual_seed(self.random_seed)
+
         self.model = NeuralNetwork(num_numerical_cols=features.shape[1],
                                    output_size=self.n_models,
                                    layers=self.params['layers'],
