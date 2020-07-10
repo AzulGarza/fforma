@@ -73,7 +73,9 @@ def prepare_fforma_data(directory, dataset_name=None):
 
     #Prepare data from R
     cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
-    os.system(cmd)
+    res_r = os.system(cmd)
+
+    assert res_r == 0, 'Some error happened with R processing'
 
     feats_train = pd.read_csv(directory + '/processed_data/train-features.csv')
     X_models_train = pd.read_csv(directory + '/processed_data/train-ff.csv')
