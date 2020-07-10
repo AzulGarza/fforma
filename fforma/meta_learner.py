@@ -157,13 +157,12 @@ class MetaLearnerNN(object):
                  contribution_to_error=None,
                  random_seed=1):
         self.params = deepcopy(params)
-        self.n_series, = y_df['unique_id'].unique().shape
+        self.n_series, = y_df.groupby(['unique_id']).size().shape
         self.h = h
         self.n_models = val_predictions.columns.size
 
         actual_y = y_df['y'].values.reshape((self.n_series, self.h))
-        preds_y_val = val_predictions
-        preds_y_val = preds_y_val.values.reshape((self.n_series, self.h, self.n_models))
+        preds_y_val = val_predictions.values.reshape((self.n_series, self.h, self.n_models))
 
         self.actual_y = torch.tensor(actual_y)
         self.preds_y_val = torch.tensor(preds_y_val)
