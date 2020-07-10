@@ -153,7 +153,7 @@ class MetaLearnerNN(object):
     random_seed:
 
     """
-    def __init__(self, params, y_df, val_predictions, h,
+    def __init__(self, params, val_predictions, y_df, h,
                  contribution_to_error=None,
                  random_seed=1):
         self.params = deepcopy(params)
