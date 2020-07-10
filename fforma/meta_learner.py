@@ -175,7 +175,7 @@ class MetaLearnerNN(object):
 
     def get_ensemble(self, margins, preds_y_val):
 
-        weights_output = weights_output.repeat(1, self.h).reshape(preds_y_val.shape)
+        weights_output = margins.repeat(1, self.h).reshape(preds_y_val.shape)
 
         ensemble = weights_output * preds_y_val
         ensemble = ensemble.sum(2)
@@ -244,7 +244,15 @@ class MetaLearnerNN(object):
                 margins = self.model(inputs)
                 ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
 
-                loss = train_loss(train_actual_y, ensemble_y_pred)
+                loss = torch.zeros(index_train.size())
+                #print(ensemble_y_pred)
+                for idx, (actual, pred) in enumerate(zip(train_actual_y, ensemble_y_pred)):
+                    loss_row = train_loss(actual, pred)
+                    loss[idx] = loss_row
+
+                loss = loss.mean()
+                #print(loss)
+
                 loss.backward()
 
                 optimizer.step()
