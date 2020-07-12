@@ -349,7 +349,11 @@ class MetaLearnerNN(object):
                     self.model.eval()
                     margins = self.model(feats_val)
                     ensemble_y_pred_test = self.get_ensemble(margins, val_preds_y_val)
-                    self.test_loss = val_loss(val_actual_y, ensemble_y_pred_test)
+                    test_loss = torch.zeros(ensemble_y_pred_test.shape[0])
+                    for idx, (y, ensamble_y) in enumerate(zip(val_actual_y, ensemble_y_pred_test)):
+                        test_loss[idx] = val_loss(val_actual_y, ensemble_y_pred_test)
+
+                    self.test_loss = test_loss.mean().item()
                     print(f"Testing loss: {self.test_loss:.5f}")
                 if (features_test is not None) and (self.predictions_test is not None):
                     self.evaluate_model_prediction(features_test, self.predictions_test,
@@ -363,6 +367,8 @@ class MetaLearnerNN(object):
     def predict(self, features, tmp=1):
         """
         """
+        self.model.eval()
+
         X = features.values
         X[X != X] = 0
         X = scale(X)
