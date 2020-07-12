@@ -129,8 +129,7 @@ class NeuralNetwork(nn.Module):
 
         self.layers = nn.Sequential(*all_layers)
 
-    def forward(self, x_numerical):
-        x = self.batch_norm_num(x_numerical)
+    def forward(self, x):
         x = self.layers(x)
         return x
 
@@ -320,7 +319,7 @@ class MetaLearnerNN(object):
                 margins = self.model(inputs)
                 ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
                 loss = train_loss(train_actual_y, ensemble_y_pred)
-                
+
                 loss.backward()
 
                 optimizer.step()
