@@ -241,6 +241,9 @@ class MetaLearnerNN(object):
 
         y_insample = y_train_df.filter(['unique_id', 'ds', 'y'])
 
+        print('y_hat:', y_hat_panel.y_hat.sum())
+        print('y:', y_panel.y.sum())
+
         model_owa, model_mase, model_smape = owa(y_panel, y_hat_panel,
                                                  y_benchmark_panel, y_insample,
                                                  seasonality=self.naive_seasonality)
