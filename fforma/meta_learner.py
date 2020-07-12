@@ -308,7 +308,7 @@ class MetaLearnerNN(object):
                                                    batch_size=self.params['batch_size'])
 
         for epoch in range(self.params['epochs']):
-
+            self.model.train()
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
@@ -338,14 +338,17 @@ class MetaLearnerNN(object):
 
             if (self.params['freq_of_test'] > 0) and (epoch % self.params['freq_of_test'] == 0):
                 with torch.no_grad():
+                    self.model.eval()
                     margins = self.model(feats_val)
                     ensemble_y_pred_test = self.get_ensemble(margins, val_preds_y_val)
                     self.test_loss = val_loss(val_actual_y, ensemble_y_pred_test)
                     print(f"Testing loss: {self.test_loss:.5f}")
-                    if (features_test is not None) and (self.predictions_test is not None):
-                        self.evaluate_model_prediction(features_test, self.predictions_test,
-                                                       self.y_train_df, self.y_test_df,
-                                                       self.y_hat_benchmark, epoch=epoch)
+                if (features_test is not None) and (self.predictions_test is not None):
+                    self.evaluate_model_prediction(features_test, self.predictions_test,
+                                                   self.y_train_df, self.y_test_df,
+                                                   self.y_hat_benchmark, epoch=epoch)
+
+                self.model.train()
 
         return self
 
