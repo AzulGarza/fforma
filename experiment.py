@@ -72,6 +72,8 @@ def main(args):
                  'gradient_eps': 1e-8,
                  'weight_decay': 0,
                  'freq_of_test': 20,
+                 'lr_scheduler_step_size': 200,
+                 'lr_decay': 0.1,
                  'loss_function': WeightedPinballLoss(0.4)}
 
     model = MetaLearnerNN(nn_params, X_models_train, y_models_train, h,
