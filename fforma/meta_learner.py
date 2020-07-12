@@ -13,6 +13,7 @@ from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import scale
+from torch.optim.lr_scheduler import StepLR
 
 from fforma.metrics import SMAPE1Loss
 from ESRNN.utils_evaluation import owa
@@ -298,11 +299,15 @@ class MetaLearnerNN(object):
                                    p=self.params['dropout'],
                                    use_softmax=self.use_softmax)
 
-        optimizer = torch.optim.Adam(self.model.parameters(),
-                                     betas=(0.9, 0.999),
-                                     lr=self.params['learning_rate'],
-                                     eps=self.params['gradient_eps'],
-                                     weight_decay=self.params['weight_decay'])
+        self.optimizer = torch.optim.Adam(self.model.parameters(),
+                                          betas=(0.9, 0.999),
+                                          lr=self.params['learning_rate'],
+                                          eps=self.params['gradient_eps'],
+                                          weight_decay=self.params['weight_decay'])
+
+        self.model_scheduler = StepLR(optimizer=self.optimizer,
+                                      step_size=self.params['lr_scheduler_step_size'],
+                                      gamma=self.params['lr_decay'])
 
         train_loader = torch.utils.data.DataLoader(train_data,
                                                    batch_size=self.params['batch_size'])
@@ -317,7 +322,7 @@ class MetaLearnerNN(object):
                 train_actual_y = self.actual_y[index_train]
                 train_preds_y_val = self.preds_y_val[index_train]
                 # zero the parameter gradients
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 # forward + backward + optimize
                 margins = self.model(inputs)
                 ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
@@ -325,9 +330,12 @@ class MetaLearnerNN(object):
 
                 loss.backward()
 
-                optimizer.step()
+                self.optimizer.step()
 
                 epoch_losses.append(loss.item())
+
+            # Decay learning rate
+            self.model_scheduler.step()
 
             self.train_loss = np.mean(epoch_losses)
 
