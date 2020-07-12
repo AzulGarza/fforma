@@ -11,11 +11,11 @@ from ESRNN.utils_evaluation import evaluate_prediction_owa
 from fforma.metrics import WeightedPinballLoss
 from fforma.meta_learner import MetaLearnerNN
 from fforma.meta_results_r_data import prepare_fforma_data
+
 #Freqs used by hyndman
 freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
-
 
 def evaluate_fforma(dataset_name, fforma_df, directory, num_obs):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
@@ -57,34 +57,41 @@ def main(args):
     feats_train = feats_train.set_index(['unique_id'])
     X_models_train = X_models_train.set_index(['unique_id', 'ds'])
     y_models_train = y_models_train.set_index(['unique_id', 'ds'])
+    feats_test = feats_test.set_index('unique_id')
+    X_models_test = X_models_test.set_index(['unique_id', 'ds'])
 
-    nn_params = {'layers': [100, 50, 25, 10],
+    _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
+                                                          directory=directory,
+                                                          num_obs=100_000)
+    #Setting model
+    nn_params = {'layers': [200, 100, 50, 25, 10],
                  'dropout': 0.1,
-                 'epochs': 2,
+                 'epochs': 160,
                  'batch_size': 2,
-                 'learning_rate': 5e-4,
+                 'learning_rate': 0.001,
                  'gradient_eps': 1e-8,
                  'weight_decay': 0,
-                 'freq_of_test': 5,
+                 'freq_of_test': 20,
                  'loss_function': WeightedPinballLoss(0.4)}
 
-    model = MetaLearnerNN(nn_params, X_models_train, y_models_train, h)
+    model = MetaLearnerNN(nn_params, X_models_train, y_models_train, h,
+                          y_train_df=y_train_df, predictions_test=X_models_test,
+                          y_test_df=y_test_df,
+                          naive_seasonality=freqs[dataset_name])
 
-    model.fit(feats_train, verbose_eval=True)
+    model.fit(feats_train, features_test=feats_test, verbose_eval=False)
 
-    feats_test_id = feats_test.set_index('unique_id')
-    X_models_test_id = X_models_test.set_index(['unique_id', 'ds'])
+    print(f'Min owa {model.min_owa} reachead at epoch {model.min_epoch}')
 
-    fforma_predictions = model.predict(feats_test_id)
+    fforma_predictions = model.predict(feats_test)
     fforma_predictions = pd.DataFrame(fforma_predictions,
-                                      index=feats_test_id.index,
-                                      columns=X_models_test_id.columns)
+                                      index=feats_test.index,
+                                      columns=X_models_test.columns)
 
-    preds = (fforma_predictions * X_models_test_id).sum(1)
+    preds = (fforma_predictions * X_models_test).sum(1)
     preds = preds.rename('y_hat').to_frame().reset_index()
 
     # # Evaluation
-
     evaluation = evaluate_fforma(dataset_name, preds, directory, 100_000)
 
     print(evaluation)

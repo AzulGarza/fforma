@@ -15,6 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import scale
 
 from fforma.metrics import SMAPE1Loss
+from ESRNN.utils_evaluation import owa
 
 softmax = nn.Softmax(1)
 
@@ -155,7 +156,12 @@ class MetaLearnerNN(object):
     """
     def __init__(self, params, val_predictions, y_df, h,
                  contribution_to_error=None,
-                 random_seed=1):
+                 random_seed=1,
+                 y_train_df=None,
+                 predictions_test=None,
+                 y_test_df=None,
+                 y_hat_benchmark='y_hat_naive2',
+                 naive_seasonality=None):
         self.params = deepcopy(params)
         self.n_series, = y_df.groupby(['unique_id']).size().shape
         self.h = h
@@ -166,6 +172,15 @@ class MetaLearnerNN(object):
 
         self.actual_y = torch.tensor(actual_y)
         self.preds_y_val = torch.tensor(preds_y_val)
+
+        self.y_train_df = y_train_df
+        self.predictions_test = predictions_test
+        self.y_test_df = y_test_df
+        self.y_hat_benchmark = y_hat_benchmark
+        self.naive_seasonality = naive_seasonality
+
+        self.min_owa = 4.0
+        self.min_epoch = 0
 
         self.random_seed = random_seed
 
@@ -183,8 +198,68 @@ class MetaLearnerNN(object):
 
         return ensemble
 
+    def evaluate_model_prediction(self, features, predictions_test,
+                                  y_train_df, y_test_df,
+                                  y_hat_benchmark='y_hat_naive2', epoch=None):
+        """
+        Evaluate ESRNN model against benchmark in y_test_df
+        Parameters
+        ----------
+        y_train_df: pandas dataframe
+          panel with columns 'unique_id', 'ds', 'y'
+        X_test_df: pandas dataframe
+          panel with columns 'unique_id', 'ds', 'x'
+        y_test_df: pandas dataframe
+          panel with columns 'unique_id', 'ds', 'y' and a column
+          y_hat_benchmark identifying benchmark predictions
+        y_hat_benchmark: str
+          column name of benchmark predictions, default y_hat_naive2
+
+        Returns
+        -------
+        model_owa : float
+          relative improvement of model with respect to benchmark, measured with
+          the M4 overall weighted average.
+        smape: float
+          relative improvement of model with respect to benchmark, measured with
+          the symmetric mean absolute percentage error.
+        mase: float
+          relative improvement of model with respect to benchmark, measured with
+          the M4 mean absolute scaled error.
+        """
+
+        y_panel = y_test_df.filter(['unique_id', 'ds', 'y'])
+        y_benchmark_panel = y_test_df.filter(['unique_id', 'ds', y_hat_benchmark])
+        y_benchmark_panel.rename(columns={y_hat_benchmark: 'y_hat'}, inplace=True)
+
+        #predictions
+        y_hat_panel = self.predict(features)
+        y_hat_panel = pd.DataFrame(y_hat_panel,
+                                   index=features.index,
+                                   columns=predictions_test.columns)
+        y_hat_panel = (y_hat_panel * predictions_test).sum(1)
+        y_hat_panel = y_hat_panel.rename('y_hat').to_frame().reset_index()
+
+        y_insample = y_train_df.filter(['unique_id', 'ds', 'y'])
+
+        model_owa, model_mase, model_smape = owa(y_panel, y_hat_panel,
+                                                 y_benchmark_panel, y_insample,
+                                                 seasonality=self.naive_seasonality)
+
+        if self.min_owa > model_owa:
+          self.min_owa = model_owa
+          if epoch is not None:
+            self.min_epoch = epoch
+
+        print('OWA: {} '.format(np.round(model_owa, 3)))
+        print('SMAPE: {} '.format(np.round(model_smape, 3)))
+        print('MASE: {} '.format(np.round(model_mase, 3)))
+
+        return model_owa, model_mase, model_smape
+
     def fit(self, features, best_models=None,
-            early_stopping_rounds=None, verbose_eval=True):
+            early_stopping_rounds=None, verbose_eval=True,
+            features_test=None):
         """
         Parameters
         ----------
@@ -244,16 +319,8 @@ class MetaLearnerNN(object):
                 # forward + backward + optimize
                 margins = self.model(inputs)
                 ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
-
-                loss = torch.zeros(index_train.size())
-                #print(ensemble_y_pred)
-                for idx, (actual, pred) in enumerate(zip(train_actual_y, ensemble_y_pred)):
-                    loss_row = train_loss(actual, pred)
-                    loss[idx] = loss_row
-
-                loss = loss.mean()
-                #print(loss)
-
+                loss = train_loss(train_actual_y, ensemble_y_pred)
+                
                 loss.backward()
 
                 optimizer.step()
@@ -272,6 +339,10 @@ class MetaLearnerNN(object):
                 ensemble_y_pred_test = self.get_ensemble(margins, val_preds_y_val)
                 self.test_loss = val_loss(val_actual_y, ensemble_y_pred_test)
                 print(f"Testing loss: {self.test_loss:.5f}")
+                if (features_test is not None) and (self.predictions_test is not None):
+                    self.evaluate_model_prediction(features_test, self.predictions_test,
+                                                   self.y_train_df, self.y_test_df,
+                                                   self.y_hat_benchmark, epoch=epoch)
 
         return self
 
