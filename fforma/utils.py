@@ -15,6 +15,12 @@ from sklearn.decomposition import PCA
 from sklearn.utils.validation import check_is_fitted
 from fforma.l1qr import L1QR
 from ESRNN.m4_data import prepare_m4_data
+from ESRNN.utils_evaluation import evaluate_prediction_owa
+
+
+freqs = {'Hourly': 24, 'Daily': 1,
+         'Monthly': 12, 'Quarterly': 4,
+         'Weekly':1, 'Yearly': 1}
 
 
 def prepare_data(df, h, min_size_per_series=None, max_series=None, regressors=None):

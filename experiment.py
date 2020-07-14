@@ -11,27 +11,12 @@ from ESRNN.utils_evaluation import evaluate_prediction_owa
 from fforma.metrics import WeightedPinballLoss
 from fforma.meta_learner import MetaLearnerNN
 from fforma.meta_results_r_data import prepare_fforma_data
-
-#Freqs used by hyndman
-freqs = {'Hourly': 24, 'Daily': 1,
-         'Monthly': 12, 'Quarterly': 4,
-         'Weekly':1, 'Yearly': 1}
-
-def evaluate_fforma(dataset_name, fforma_df, directory, num_obs):
-    _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
-                                                          directory=directory,
-                                                          num_obs=num_obs)
-
-    y_test_fforma = fforma_df[fforma_df['unique_id'].isin(y_test_df['unique_id'].unique())]
-    y_test_fforma = y_test_fforma.rename(columns={'fforma_prediction': 'y_hat'})
-    y_test_fforma = y_test_fforma.filter(items=['unique_id', 'ds', 'y_hat'])
-
-    seasonality = freqs[dataset_name]
-    owa, mase, smape = evaluate_prediction_owa(y_test_fforma, y_train_df,
-                                               X_test_df, y_test_df,
-                                               seasonality)
-
-    return dataset_name, owa, mase, smape
+from fforma.utils import (
+    FactorQuantileRegressionAveraging,
+    LassoQuantileRegressionAveraging,
+    evaluate_forecasts,
+    freqs
+)
 
 def main(args):
     dataset_name = args.dataset
@@ -63,10 +48,29 @@ def main(args):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
                                                           directory=directory,
                                                           num_obs=100_000)
+
+    ################################
+    ############## LASSO QRA
+    ###############################
+    qra = LassoQuantileRegressionAveraging(.5)
+    qra.fit(X_models_train, y_models_train)
+    qra_preds = qra.predict(X_models_test).rename(columns={'p50': 'lqra'})
+
+
+    ################################
+    ############## FACTOR QRA
+    ###############################
+    fqra = FactorQuantileRegressionAveraging((.5,), 0.9)
+    fqra.fit(X_models_train, y_models_train)
+    fqra_preds = fqra.predict(X_models_test).rename(columns={'p50': 'fqra'})
+
+    ##############################
+    ############# QFFORMA
+    ##############################
     #Setting model
     nn_params = {'layers': [200, 100, 50, 25, 10],
                  'dropout': 0.1,
-                 'epochs': 160,
+                 'epochs': 180,
                  'batch_size': 2,
                  'learning_rate': 0.001,
                  'gradient_eps': 1e-8,
@@ -90,11 +94,15 @@ def main(args):
                                       index=feats_test.index,
                                       columns=X_models_test.columns)
 
-    preds = (fforma_predictions * X_models_test).sum(1)
-    preds = preds.rename('y_hat').to_frame().reset_index()
+    fforma_predictions = (fforma_predictions * X_models_test).sum(1)
+    fforma_predictions = fforma_predictions.rename('qfforma').to_frame()
 
-    # # Evaluation
-    evaluation = evaluate_fforma(dataset_name, preds, directory, 100_000)
+
+    #####################################
+    ############# EVALUATION
+    ###################################
+    forecasts = pd.concat([qra_preds, fqra_preds, fforma_predictions], 1).reset_index()
+    evaluation = evaluate_forecasts(dataset_name, forecasts, directory, 100_000)
 
     print(evaluation)
 
