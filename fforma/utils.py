@@ -16,6 +16,9 @@ from sklearn.utils.validation import check_is_fitted
 from fforma.l1qr import L1QR
 from ESRNN.m4_data import prepare_m4_data
 from ESRNN.utils_evaluation import evaluate_prediction_owa
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
+import time
 
 
 freqs = {'Hourly': 24, 'Daily': 1,
@@ -95,15 +98,15 @@ class FactorQuantileRegressionAveraging:
         self.n_components = n_components
         self.add_constant = add_constant
 
-    def _fit_quantile_ts(self, uid):
+    def _fit_quantile_ts(self, uid, grouped_y, grouped_X, n_components):
         """
         X: numpy array
         y: numpy array
         """
-        y = self.grouped_y.get_group(uid)['y'].values
-        X = self.grouped_X.get_group(uid).values
+        y = grouped_y.get_group(uid)['y'].values
+        X = grouped_X.get_group(uid).values
 
-        pca_model = PCA(n_components=self.n_components).fit(X)
+        pca_model = PCA(n_components=n_components).fit(X)
         X = pca_model.transform(X)
         cols = [f'factor_{f+1}' for f in range(X.shape[1])]
 
@@ -156,14 +159,23 @@ class FactorQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        self.grouped_X = X_df.groupby('unique_id')
-        self.grouped_y = y_df.groupby('unique_id')
-        self.uids = list(self.grouped_y.groups.keys())
+        grouped_X = X_df.groupby('unique_id')
+        grouped_y = y_df.groupby('unique_id')
 
-        partial_quantile_ts = partial(self._fit_quantile_ts)
+        partial_quantile_ts = partial(self._fit_quantile_ts,
+                                      grouped_y=grouped_y,
+                                      grouped_X=grouped_X,
+                                      n_components=self.n_components)
 
-        with mp.Pool() as pool:
-           params_models = pool.map(partial_quantile_ts, self.uids)
+        uids = list(grouped_y.groups.keys())
+
+        params_models = []
+        for uid in uids:
+            param_model = delayed(partial_quantile_ts)(uid)
+            params_models.append(param_model)
+
+        with ProgressBar():
+            params_models = compute(*params_models, scheduler='processes')
 
         params, models = zip(*params_models)
 
@@ -175,10 +187,16 @@ class FactorQuantileRegressionAveraging:
     def predict(self, X_df):
         """
         """
+        check_is_fitted(self, 'models_')
         partial_predict_quantile_ts = partial(self._predict_quantile_ts)
 
-        with mp.Pool() as pool:
-           X_transformed = pool.starmap(partial_predict_quantile_ts, X_df.groupby('unique_id'))
+        X_transformed = []
+        for uid, X in X_df.groupby('unique_id'):
+            transformed = delayed(partial_predict_quantile_ts)(uid, X)
+            X_transformed.append(transformed)
+
+        with ProgressBar():
+            X_transformed = compute(*X_transformed)
 
         X_transformed = pd.concat(X_transformed).fillna(0)
 
@@ -197,15 +215,15 @@ class LassoQuantileRegressionAveraging:
         self.tau = tau
         self.penalty = penalty
 
-    def _fit_quantile_ts(self, uid):
+    def _fit_quantile_ts(self, uid, grouped_y, grouped_X, tau):
         """
         X: numpy array
         y: numpy array
         """
-        y = self.grouped_y.get_group(uid)['y']
-        X = self.grouped_X.get_group(uid)
+        y = grouped_y.get_group(uid)['y']
+        X = grouped_X.get_group(uid)
 
-        model = L1QR(y, X, self.tau).fit()
+        model = L1QR(y, X, tau).fit()
 
         model = pd.DataFrame({'model': model}, index=[uid])
 
@@ -225,16 +243,27 @@ class LassoQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        partial_quantile_ts = partial(self._fit_quantile_ts)
+        grouped_X = X_df.groupby('unique_id')
+        grouped_y = y_df.groupby('unique_id')
 
-        self.grouped_X = X_df.groupby('unique_id')
-        self.grouped_y = y_df.groupby('unique_id')
-        self.uids = list(self.grouped_y.groups.keys())
+        partial_quantile_ts = partial(self._fit_quantile_ts,
+                                      grouped_y=grouped_y,
+                                      grouped_X=grouped_X,
+                                      tau=self.tau)
 
-        with mp.Pool() as pool:
-            models = pool.map(partial_quantile_ts, self.uids)
+
+        uids = list(grouped_y.groups.keys())
+
+        models = []
+        for uid in uids:
+            model = delayed(partial_quantile_ts)(uid)
+            models.append(model)
+
+        with ProgressBar():
+            models = compute(*models, scheduler='processes')
 
         self.models_ = pd.concat(models)
+
 
         return self
 
@@ -244,8 +273,13 @@ class LassoQuantileRegressionAveraging:
         check_is_fitted(self, 'models_')
         partial_predict_quantile_ts = partial(self._predict_quantile_ts)
 
-        with mp.Pool() as pool:
-            y_hat = pool.starmap(partial_predict_quantile_ts, X_df.groupby('unique_id'))
+        y_hat = []
+        for uid, X in X_df.groupby('unique_id'):
+            preds = delayed(partial_predict_quantile_ts)(uid, X)
+            y_hat.append(preds)
+
+        with ProgressBar():
+            y_hat = compute(*y_hat, scheduler='processes')
 
         y_hat = pd.concat(y_hat).rename(f'p{int(100 * self.tau)}').to_frame()
 
