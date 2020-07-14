@@ -13,6 +13,8 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.utils.validation import check_is_fitted
+from fforma.l1qr import L1QR
+from ESRNN.m4_data import prepare_m4_data
 
 
 def prepare_data(df, h, min_size_per_series=None, max_series=None, regressors=None):
@@ -82,43 +84,26 @@ def plot_grid_prediction(pandas_df, columns, plot_random=True, unique_ids=None, 
 
 class FactorQuantileRegressionAveraging:
 
-    def __init__(self, tau, n_components):
+    def __init__(self, tau, n_components, add_constant=True):
         self.tau = tau
         self.n_components = n_components
+        self.add_constant = add_constant
 
-        factor_cols = [f'factor_{f+1}' for f in range(self.n_components)]
-        self.cols = ['constant'] + factor_cols
-
-    def _fit_pca_ts(self, uid, X):
-        forecasts, cols = trimm_correlated(X)
-        forecasts = forecasts.values
-        pca_model = PCA(n_components=self.n_components).fit(forecasts) if forecasts.size > 0 else None
-        X_transformed = pca_model.transform(forecasts)
-        X_transformed = add_constant(X_transformed)
-
-        return uid, cols, pca_model, X_transformed
-
-    def fit_pca(self, X_df):
-
-        partial_fit_pca_ts = partial(self._fit_pca_ts)
-
-        with mp.Pool() as pool:
-            fitted_pca = pool.starmap(partial_fit_pca_ts, X_df.groupby('unique_id'))
-
-        self.fitted_pca = {uid: vals for uid, *vals in fitted_pca}
-        #self.fitted_pca = {uid: self._fit_pca_ts(X) for uid, X in X_df.groupby('unique_id')}
-
-        return self
-
-    def _fit_quantile_ts(self, uid, y_df):
+    def _fit_quantile_ts(self, uid):
         """
         X: numpy array
         y: numpy array
         """
-        check_is_fitted(self, 'fitted_pca')
+        y = self.grouped_y.get_group(uid)['y'].values
+        X = self.grouped_X.get_group(uid).values
 
-        _, _, X = self.fitted_pca[uid]
-        y = y_df['y'].values
+        pca_model = PCA(n_components=self.n_components).fit(X)
+        X = pca_model.transform(X)
+        cols = [f'factor_{f+1}' for f in range(X.shape[1])]
+
+        if add_constant:
+            X = add_constant(X)
+            cols = ['constant'] + cols
 
         if X.shape[1] > 1:
             cond_number = np.linalg.cond(X)
@@ -129,118 +114,6 @@ class FactorQuantileRegressionAveraging:
 
         for tau in self.tau:
             opt_params = QuantReg(y, X).fit(tau).params
-
-            opt_params = dict(zip(self.cols, opt_params))
-            tau = 100 * tau
-            tau = int(tau)
-            tau = 'p' + str(tau)
-            index = pd.MultiIndex.from_arrays([[uid], [tau]], names=('unique_id', 'quantile'))
-            opt_params = pd.DataFrame(opt_params, index=index)
-
-            opt_params_l.append(opt_params)
-
-        opt_params = pd.concat(opt_params_l)
-
-        return opt_params
-
-    def _predict_quantile_ts(self, uid, X_df):
-        cols, model, _  = self.fitted_pca[uid]
-        X = X_df[cols].values
-        X_transformed = model.transform(X)
-        X_transformed = add_constant(X_transformed)
-        X_transformed = pd.DataFrame(X_transformed,
-                                     columns=self.cols[:X_transformed.shape[1]],
-                                     index=X_df.set_index(['unique_id', 'ds']).index)
-
-        return X_transformed
-
-    def fit(self, X_df, y_df):
-        """
-        X: pandas df
-            Panel DataFrame with columns unique_id, ds, models to ensemble
-        y: pandas df
-            Panel Dataframe with columns unique_id, df, y
-        """
-
-        self.fit_pca(X_df)
-
-        partial_quantile_ts = partial(self._fit_quantile_ts)
-
-        grouped = y_df.groupby('unique_id')
-
-        with mp.Pool() as pool:
-            params = pool.starmap(partial_quantile_ts, grouped)
-        #params = [partial_quantile_ts(uid, y['y'].values) for uid, y in grouped]
-
-        self.weigths_ = pd.concat(params)
-
-        return self
-
-    def predict(self, X_df):
-        """
-        """
-        partial_predict_quantile_ts = partial(self._predict_quantile_ts)
-
-        with mp.Pool() as pool:
-            X_transformed = pool.starmap(partial_predict_quantile_ts, X_df.groupby(['unique_id']))
-
-        X_transformed = pd.concat(X_transformed)
-
-        y_hat = (self.weigths_ * X_transformed).sum(axis=1)
-        y_hat.name = 'y_hat'
-        y_hat = y_hat.to_frame()
-
-        y_hat = y_hat.pivot_table(index=['unique_id','ds'], columns='quantile')
-        y_hat.columns = y_hat.columns.droplevel().rename(None)
-
-        return y_hat
-
-class QuantileRegressionAveraging:
-
-    def __init__(self, tau):
-        self.tau = tau
-
-    def _fit_trimm_correlated_ts(self, uid, X):
-        forecasts, cols = trimm_correlated(X)
-        cols = cols.to_list()
-        forecasts = forecasts.values
-        X_transformed = add_constant(forecasts)
-
-        return uid, cols, X_transformed
-
-    def fit_trimm_correlated(self, X_df):
-
-        partial_fit_trimm_correlated_ts = partial(self._fit_trimm_correlated_ts)
-
-        with mp.Pool() as pool:
-            fitted_pca = pool.starmap(partial_fit_trimm_correlated_ts, X_df.groupby('unique_id'))
-
-        self.fitted_trimm_correlated = {uid: vals for uid, *vals in fitted_pca}
-        #self.fitted_pca = {uid: self._fit_pca_ts(X) for uid, X in X_df.groupby('unique_id')}
-
-        return self
-
-    def _fit_quantile_ts(self, uid, y_df):
-        """
-        X: numpy array
-        y: numpy array
-        """
-        check_is_fitted(self, 'fitted_trimm_correlated')
-
-        cols, X = self.fitted_trimm_correlated[uid]
-        cols = ['constant'] + cols
-        y = y_df['y'].values
-
-        if X.shape[1] > 1:
-            cond_number = np.linalg.cond(X)
-
-            assert cond_number < 1e15, f'Matrix of forecasts is ill-conditioned. {uid}\n{X.shape}'
-
-        opt_params_l = []
-
-        for tau in self.tau:
-            opt_params = QuantReg(y, X).fit(tau).params
-            assert opt_params.size == len(cols)
 
             opt_params = dict(zip(cols, opt_params))
             tau = 100 * tau
@@ -252,18 +125,22 @@ class QuantileRegressionAveraging:
             opt_params_l.append(opt_params)
 
         opt_params = pd.concat(opt_params_l)
+        pca_model = pd.DataFrame({'model': pca_model}, index=[uid])
 
-        return opt_params
+        return opt_params, pca_model
 
     def _predict_quantile_ts(self, uid, X_df):
-        cols, _  = self.fitted_trimm_correlated[uid]
-        forecasts = X_df[cols].values
-        X_transformed = add_constant(forecasts)
-        X_transformed = pd.DataFrame(X_transformed,
-                                     columns=['constant'] + cols,
-                                     index=X_df.set_index(['unique_id', 'ds']).index)
+        X = X_df.values
+        X = self.models_.loc[uid, 'model'].transform(X)
+        cols = [f'factor_{f+1}' for f in range(X.shape[1])]
 
-        return X_transformed
+        if self.add_constant:
+            X = add_constant(X)
+            cols = ['constant'] + cols
+
+        X = pd.DataFrame(X, columns=cols, index=X_df.index)
+
+        return X
 
     def fit(self, X_df, y_df):
         """
@@ -273,17 +150,19 @@ class QuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        self.fit_trimm_correlated(X_df)
+        self.grouped_X = X_df.groupby('unique_id')
+        self.grouped_y = y_df.groupby('unique_id')
+        self.uids = list(self.grouped_y.groups.keys())
 
         partial_quantile_ts = partial(self._fit_quantile_ts)
 
-        grouped = y_df.groupby('unique_id')
-
         with mp.Pool() as pool:
-            params = pool.starmap(partial_quantile_ts, grouped)
-        #params = [partial_quantile_ts(uid, y['y'].values) for uid, y in grouped]
+           params_models = pool.map(partial_quantile_ts, self.uids)
+
+        params, models = zip(*params_models)
 
         self.weigths_ = pd.concat(params).fillna(0)
+        self.models_ = pd.concat(models)
 
         return self
 
@@ -293,9 +172,9 @@ class QuantileRegressionAveraging:
         partial_predict_quantile_ts = partial(self._predict_quantile_ts)
 
         with mp.Pool() as pool:
-            X_transformed = pool.starmap(partial_predict_quantile_ts, X_df.groupby(['unique_id']))
+           X_transformed = pool.starmap(partial_predict_quantile_ts, X_df.groupby('unique_id'))
 
-        X_transformed = pd.concat(X_transformed)
+        X_transformed = pd.concat(X_transformed).fillna(0)
 
         y_hat = (self.weigths_ * X_transformed).sum(axis=1)
         y_hat.name = 'y_hat'
@@ -306,22 +185,84 @@ class QuantileRegressionAveraging:
 
         return y_hat
 
+class LassoQuantileRegressionAveraging:
 
-def trimm_correlated(df_in, threshold=0.99):
-    """
+    def __init__(self, tau, penalty=1):
+        self.tau = tau
+        self.penalty = penalty
 
-    Notes
-    -----
-    [1] Based on https://stackoverflow.com/questions/49282049/remove-strongly-correlated-columns-from-dataframe
-    """
-    df_corr = df_in.corr(method='pearson', min_periods=1)
-    df_corr[df_corr.isna()] = 1
-    df_not_correlated = ~(df_corr.mask(np.tril(np.ones([len(df_corr)]*2, dtype=bool))).abs() > threshold).any()
-    non_constant_cols = df_in[df_not_correlated.index].std() > 1e-8
+    def _fit_quantile_ts(self, uid):
+        """
+        X: numpy array
+        y: numpy array
+        """
+        y = self.grouped_y.get_group(uid)['y']
+        X = self.grouped_X.get_group(uid)
 
-    df_not_correlated = df_not_correlated & non_constant_cols
+        model = L1QR(y, X, self.tau).fit()
 
-    un_corr_idx = df_not_correlated.loc[df_not_correlated[df_not_correlated.index]].index
-    df_out = df_in[un_corr_idx]
+        return uid, model
 
-    return df_out, un_corr_idx
+    def _predict_quantile_ts(self, uid, X_df):
+
+        prediction = self.models_[uid].predict(X_df, self.penalty)
+
+        return prediction
+
+    def fit(self, X_df, y_df):
+        """
+        X: pandas df
+            Panel DataFrame with columns unique_id, ds, models to ensemble
+        y: pandas df
+            Panel Dataframe with columns unique_id, df, y
+        """
+
+        partial_quantile_ts = partial(self._fit_quantile_ts)
+
+        self.grouped_X = X_df.groupby('unique_id')
+        self.grouped_y = y_df.groupby('unique_id')
+        self.uids = list(self.grouped_y.groups.keys())
+
+        with mp.Pool() as pool:
+            models = pool.map(partial_quantile_ts, self.uids)
+
+        self.models_ = {uid: model for uid, model in models}
+
+        return self
+
+    def predict(self, X_df):
+        """
+        """
+        check_is_fitted(self, 'models_')
+        partial_predict_quantile_ts = partial(self._predict_quantile_ts)
+
+        with mp.Pool() as pool:
+            y_hat = pool.starmap(partial_predict_quantile_ts, X_df.groupby('unique_id'))
+
+        y_hat = pd.concat(y_hat).rename(f'p{int(100 * self.tau)}').to_frame()
+
+        return y_hat
+
+def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
+    _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
+                                                          directory=directory,
+                                                          num_obs=num_obs)
+
+    y_test = panel_df[panel_df['unique_id'].isin(y_test_df['unique_id'].unique())]
+
+    seasonality = freqs[dataset_name]
+
+    eval_cols = set(panel_df.columns) - {'unique_id', 'ds'}
+
+    evaluation = {}
+
+    for col in eval_cols:
+        print(col)
+        y_test_model = y_test[['unique_id', 'ds', col]].rename(columns={col: 'y_hat'})
+        owa, mase, smape = evaluate_prediction_owa(y_test_model, y_train_df, X_test_df, y_test_df, seasonality)
+        evaluation[col] = owa
+
+
+    evaluation = pd.DataFrame(evaluation, index=[dataset_name])
+
+    return evaluation
