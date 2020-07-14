@@ -207,11 +207,13 @@ class LassoQuantileRegressionAveraging:
 
         model = L1QR(y, X, self.tau).fit()
 
-        return uid, model
+        model = pd.DataFrame({'model': model}, index=[uid])
+
+        return model
 
     def _predict_quantile_ts(self, uid, X_df):
 
-        prediction = self.models_[uid].predict(X_df, self.penalty)
+        prediction = self.models_.loc[uid, 'model'].predict(X_df, self.penalty)
 
         return prediction
 
@@ -232,7 +234,7 @@ class LassoQuantileRegressionAveraging:
         with mp.Pool() as pool:
             models = pool.map(partial_quantile_ts, self.uids)
 
-        self.models_ = {uid: model for uid, model in models}
+        self.models_ = pd.concat(models)
 
         return self
 
