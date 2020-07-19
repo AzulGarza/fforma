@@ -7,12 +7,13 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
+import itertools
 
 from copy import deepcopy
 from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import scale
+from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from fforma.metrics import SMAPE1Loss
@@ -130,9 +131,10 @@ class NeuralNetwork(nn.Module):
 
         self.layers = nn.Sequential(*all_layers)
 
-    def forward(self, x):
-        x = self.layers(x)
-        return x
+    def forward(self, x, v):
+        theta = self.layers(x)
+        forecast = torch.einsum('ij,ikj->ik', theta, v)
+        return forecast
 
 class MetaLearnerNN(object):
     """Evaluates ensemble model on the fly using neural networks.
@@ -154,115 +156,38 @@ class MetaLearnerNN(object):
     random_seed:
 
     """
-    def __init__(self, params, val_predictions, y_df, h,
-                 contribution_to_error=None,
-                 random_seed=1,
-                 y_train_df=None,
-                 predictions_test=None,
-                 y_test_df=None,
-                 y_hat_benchmark='y_hat_naive2',
-                 naive_seasonality=None):
+    def __init__(self, params, random_seed=1):
         self.params = deepcopy(params)
-        self.n_series, = y_df.groupby(['unique_id']).size().shape
-        self.h = h
-        self.n_models = val_predictions.columns.size
-
-        actual_y = y_df['y'].values.reshape((self.n_series, self.h))
-        preds_y_val = val_predictions.values.reshape((self.n_series, self.h, self.n_models))
-
-        self.actual_y = torch.tensor(actual_y)
-        self.preds_y_val = torch.tensor(preds_y_val)
-
-        self.y_train_df = y_train_df
-        self.predictions_test = predictions_test
-        self.y_test_df = y_test_df
-        self.y_hat_benchmark = y_hat_benchmark
-        self.naive_seasonality = naive_seasonality
-
-        self.min_owa = 4.0
-        self.min_epoch = 0
-
+        self.use_softmax = self.params.pop('use_softmax', False)
         self.random_seed = random_seed
 
-        self.loss_function = self.params.pop('loss_function', SMAPE1Loss)
-        self.use_softmax = self.params.pop('use_softmax', False)
+    def parse_datasets(self, preds_df, y_df):
+        
+        horizons = preds_df.groupby('unique_id')['ds'].count().values
+        max_horizon = max(horizons)
+        
+        # Padding
+        dict_df = {'unique_id':preds_df['unique_id'].unique(),
+                'ds':list(range(1, max_horizon+1))}
+        padding_dict = list(itertools.product(*list(dict_df.values())))
+        padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
+        df_padded = padding_dict.merge(preds_df, on=['unique_id','ds'], how='outer')
+        df_padded = df_padded.merge(y_df, on=['unique_id','ds'], how='outer')
+        df_padded = df_padded.fillna(0)
+        df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
+        
+        # Reshape to tensor
+        n_series = len(horizons)
+        n_models = preds_df.columns.size - 2 #2 por unique_id y ds, TODO: sacar hardcodeo
+        
+        y = df_padded['y'].values.reshape((n_series, max_horizon))
+        df_padded = df_padded.drop(['unique_id','ds','y'], axis=1)
+        preds = df_padded.values.reshape((n_series, max_horizon, n_models))
+        horizons = np.expand_dims(horizons,1)
 
-    def get_ensemble(self, margins, preds_y_val):
+        return y, preds, horizons, n_series, n_models
 
-        weights_output = margins.repeat(1, self.h).reshape(preds_y_val.shape)
-
-        ensemble = weights_output * preds_y_val
-        ensemble = ensemble.sum(2)
-
-        #print(ensemble)
-
-        return ensemble
-
-    def evaluate_model_prediction(self, features, predictions_test,
-                                  y_train_df, y_test_df,
-                                  y_hat_benchmark='y_hat_naive2', epoch=None):
-        """
-        Evaluate ESRNN model against benchmark in y_test_df
-        Parameters
-        ----------
-        y_train_df: pandas dataframe
-          panel with columns 'unique_id', 'ds', 'y'
-        X_test_df: pandas dataframe
-          panel with columns 'unique_id', 'ds', 'x'
-        y_test_df: pandas dataframe
-          panel with columns 'unique_id', 'ds', 'y' and a column
-          y_hat_benchmark identifying benchmark predictions
-        y_hat_benchmark: str
-          column name of benchmark predictions, default y_hat_naive2
-
-        Returns
-        -------
-        model_owa : float
-          relative improvement of model with respect to benchmark, measured with
-          the M4 overall weighted average.
-        smape: float
-          relative improvement of model with respect to benchmark, measured with
-          the symmetric mean absolute percentage error.
-        mase: float
-          relative improvement of model with respect to benchmark, measured with
-          the M4 mean absolute scaled error.
-        """
-
-        y_panel = y_test_df.filter(['unique_id', 'ds', 'y'])
-        y_benchmark_panel = y_test_df.filter(['unique_id', 'ds', y_hat_benchmark])
-        y_benchmark_panel.rename(columns={y_hat_benchmark: 'y_hat'}, inplace=True)
-
-        #predictions
-        y_hat_panel = self.predict(features)
-        y_hat_panel = pd.DataFrame(y_hat_panel,
-                                   index=features.index,
-                                   columns=predictions_test.columns)
-        y_hat_panel = (y_hat_panel * predictions_test).sum(1)
-        y_hat_panel = y_hat_panel.rename('y_hat').to_frame().reset_index()
-
-        y_insample = y_train_df.filter(['unique_id', 'ds', 'y'])
-
-        print('y_hat:', y_hat_panel.y_hat.sum())
-        print('y:', y_panel.y.sum())
-
-        model_owa, model_mase, model_smape = owa(y_panel, y_hat_panel,
-                                                 y_benchmark_panel, y_insample,
-                                                 seasonality=self.naive_seasonality)
-
-        if self.min_owa > model_owa:
-          self.min_owa = model_owa
-          if epoch is not None:
-            self.min_epoch = epoch
-
-        print('OWA: {} '.format(np.round(model_owa, 3)))
-        print('SMAPE: {} '.format(np.round(model_smape, 3)))
-        print('MASE: {} '.format(np.round(model_mase, 3)))
-
-        return model_owa, model_mase, model_smape
-
-    def fit(self, features, best_models=None,
-            early_stopping_rounds=None, verbose_eval=True,
-            features_test=None):
+    def fit(self, X_df, preds_df, y_df, verbose_eval=True):
         """
         Parameters
         ----------
@@ -271,71 +196,61 @@ class MetaLearnerNN(object):
         best_models: numpy array
             Numpy array of size N.
         """
-        X = features.values
-        X[X != X] = 0
-        X = scale(X)
-
-        feats_train, \
-            feats_val, \
-            indices_train, \
-            indices_val = train_test_split(torch.tensor(X, dtype=torch.float),
-                                           torch.tensor(np.arange(X.shape[0])),
-                                           random_state=self.random_seed)
-
-        train_loss = deepcopy(self.loss_function)
-        val_loss = deepcopy(self.loss_function)
-
-        train_data = torch.utils.data.TensorDataset(feats_train, indices_train)
-
-        if self.params['freq_of_test'] > 0:
-            val_actual_y = self.actual_y[indices_val]
-            val_preds_y_val = self.preds_y_val[indices_val]
-
         torch.manual_seed(self.random_seed)
+        np.random.seed(self.random_seed)
 
-        self.model = NeuralNetwork(num_numerical_cols=features.shape[1],
+        y, preds, horizons, n_series, n_models = self.parse_datasets(preds_df, y_df)
+        self.y = torch.tensor(y, dtype=torch.float32)
+        self.preds = torch.tensor(preds, dtype=torch.float32)
+        self.horizons = torch.tensor(horizons, dtype=torch.float32)
+        self.n_series = n_series
+        self.n_models = n_models
+
+        X_df = X_df.set_index(['unique_id'])
+        X = X_df.values
+        self.scaler = StandardScaler().fit(X)
+        X = self.scaler.transform(X)
+        X = torch.tensor(X, dtype=torch.float32)
+
+        loss = self.params['loss_function']
+
+        self.model = NeuralNetwork(num_numerical_cols=X_df.shape[1],
                                    output_size=self.n_models,
                                    layers=self.params['layers'],
                                    p=self.params['dropout'],
                                    use_softmax=self.use_softmax)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                          betas=(0.9, 0.999),
-                                          lr=self.params['learning_rate'],
-                                          eps=self.params['gradient_eps'],
-                                          weight_decay=self.params['weight_decay'])
+        optimizer = torch.optim.Adam(self.model.parameters(),
+                                     betas=(0.9, 0.999),
+                                     lr=self.params['learning_rate'],
+                                     eps=self.params['gradient_eps'],
+                                     weight_decay=self.params['weight_decay'])
 
-        self.model_scheduler = StepLR(optimizer=self.optimizer,
-                                      step_size=self.params['lr_scheduler_step_size'],
-                                      gamma=self.params['lr_decay'])
+        lr_scheduler = StepLR(optimizer=optimizer,
+                              step_size=self.params['lr_scheduler_step_size'],
+                              gamma=self.params['lr_decay'])
 
-        train_loader = torch.utils.data.DataLoader(train_data,
-                                                   batch_size=self.params['batch_size'])
+        train_data = torch.utils.data.TensorDataset(X, self.y, self.preds, self.horizons)
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=self.params['batch_size'])
 
         for epoch in range(self.params['epochs']):
             self.model.train()
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
-                inputs, index_train = data
+                batch_x, batch_y, batch_preds, batch_h = data
+                batch_weights = 1/batch_h
+                
+                optimizer.zero_grad()
+                batch_y_hat = self.model(batch_x, batch_preds)
+                train_loss = loss(batch_y, batch_y_hat, batch_weights)
+                train_loss.backward()
+                optimizer.step()
 
-                train_actual_y = self.actual_y[index_train]
-                train_preds_y_val = self.preds_y_val[index_train]
-                # zero the parameter gradients
-                self.optimizer.zero_grad()
-                # forward + backward + optimize
-                margins = self.model(inputs)
-                ensemble_y_pred = self.get_ensemble(margins, train_preds_y_val)
-                loss = train_loss(train_actual_y, ensemble_y_pred)
-
-                loss.backward()
-
-                self.optimizer.step()
-
-                epoch_losses.append(loss.item())
+                epoch_losses.append(train_loss.data.numpy())
 
             # Decay learning rate
-            self.model_scheduler.step()
+            lr_scheduler.step()
 
             self.train_loss = np.mean(epoch_losses)
 
@@ -344,38 +259,27 @@ class MetaLearnerNN(object):
                 print(f"Training time: {round(time.time() - start, 5)}")
                 print(f"Training loss: {self.train_loss:.5f}")
 
-            if (self.params['freq_of_test'] > 0) and (epoch % self.params['freq_of_test'] == 0):
-                with torch.no_grad():
-                    self.model.eval()
-                    margins = self.model(feats_val)
-                    ensemble_y_pred_test = self.get_ensemble(margins, val_preds_y_val)
-                    test_loss = torch.zeros(ensemble_y_pred_test.shape[0])
-                    for idx, (y, ensamble_y) in enumerate(zip(val_actual_y, ensemble_y_pred_test)):
-                        test_loss[idx] = val_loss(val_actual_y, ensemble_y_pred_test)
-
-                    self.test_loss = test_loss.mean().item()
-                    print(f"Testing loss: {self.test_loss:.5f}")
-                if (features_test is not None) and (self.predictions_test is not None):
-                    self.evaluate_model_prediction(features_test, self.predictions_test,
-                                                   self.y_train_df, self.y_test_df,
-                                                   self.y_hat_benchmark, epoch=epoch)
-
-                self.model.train()
-
         return self
 
-    def predict(self, features, tmp=1):
+    def predict(self, X_df, preds_df, y_df, tmp=1):
         """
         """
+        y_hat_df = y_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
+        y_hat_df = y_hat_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+
+        y_df = y_df.drop(['y_hat_naive2'], axis=1)
+        _, preds_test, _, _, _ = self.parse_datasets(preds_df, y_df)
+
+        preds_test = torch.tensor(preds_test, dtype=torch.float32)
+
         self.model.eval()
 
-        X = features.values
-        X[X != X] = 0
-        X = scale(X)
+        X_df = X_df.set_index(['unique_id'])
+        X = X_df.values
+        X = self.scaler.transform(X)
+        X = torch.tensor(X, dtype=torch.float32)
 
-        features_tensor = torch.tensor(X, dtype=torch.float)
-        scores = self.model(features_tensor)
+        forecast = self.model(X, preds_test)
+        y_hat_df['y_hat'] = forecast.data.numpy().flatten()
 
-        weights = scores.detach().numpy()
-
-        return weights
+        return y_hat_df

@@ -236,11 +236,13 @@ class WeightedPinballLoss(nn.Module):
         super(WeightedPinballLoss, self).__init__()
         self.tau = tau
 
-    def forward(self, y, y_hat):
+    def forward(self, y, y_hat, weights):
         delta_y = t.sub(y, y_hat)
         pinball = t.max(t.mul(self.tau, delta_y), t.mul((self.tau - 1), delta_y))
-        pinball = 2 * t.sum(pinball) / t.sum(t.abs(y))
-
+        pinball = t.sum(pinball, dim=1)
+        pinball = t.mul(pinball, weights)
+        pinball = t.mean(pinball)
+        
         return pinball
 
 ######################################################################
