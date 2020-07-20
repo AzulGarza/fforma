@@ -17,7 +17,6 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from fforma.metrics import SMAPE1Loss
-from ESRNN.utils_evaluation import owa
 
 softmax = nn.Softmax(1)
 
@@ -162,10 +161,10 @@ class MetaLearnerNN(object):
         self.random_seed = random_seed
 
     def parse_datasets(self, preds_df, y_df):
-        
+
         horizons = preds_df.groupby('unique_id')['ds'].count().values
         max_horizon = max(horizons)
-        
+
         # Padding
         dict_df = {'unique_id':preds_df['unique_id'].unique(),
                 'ds':list(range(1, max_horizon+1))}
@@ -175,11 +174,11 @@ class MetaLearnerNN(object):
         df_padded = df_padded.merge(y_df, on=['unique_id','ds'], how='outer')
         df_padded = df_padded.fillna(0)
         df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
-        
+
         # Reshape to tensor
         n_series = len(horizons)
         n_models = preds_df.columns.size - 2 #2 por unique_id y ds, TODO: sacar hardcodeo
-        
+
         y = df_padded['y'].values.reshape((n_series, max_horizon))
         df_padded = df_padded.drop(['unique_id','ds','y'], axis=1)
         preds = df_padded.values.reshape((n_series, max_horizon, n_models))
@@ -240,7 +239,7 @@ class MetaLearnerNN(object):
             for i, data in enumerate(train_loader):
                 batch_x, batch_y, batch_preds, batch_h = data
                 batch_weights = 1/batch_h
-                
+
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
                 train_loss = loss(batch_y, batch_y_hat, batch_weights)
