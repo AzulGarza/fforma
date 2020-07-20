@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import pandas as pd
+import numpy as np
 import rpy2.robjects as robjects
 
 from copy import deepcopy
@@ -26,7 +27,7 @@ def get_forecast(fitted_model, h):
     """Calculates forecast from a fitted model."""
     y_hat = forecast.forecast(fitted_model, h=h)
     y_hat = forecast_object_to_dict(y_hat)
-    y_hat = y_hat['mean']
+    y_hat = np.array(y_hat['mean'])
 
     return y_hat
 
@@ -53,15 +54,10 @@ def fit_forecast_model(y, freq, model, **kwargs):
     rpy2 object
         Fitted model
     """
-
-
     pandas2ri.activate()
 
     freq = deepcopy(freq)
-    if isinstance(freq, int):
-        freq = freq
-    else:
-        freq = IntVector(freq)
+    #freq = freq #IntVector(freq) if isinstance(freq, int) else freq
 
     rstring = """
      function(y, freq, ...){
@@ -99,14 +95,15 @@ class ForecastModel(BaseEstimator, RegressorMixin):
         self.model = model
         self.kwargs = kwargs
 
-    def fit(self, y):
+    def fit(self, X, y):
         self.fitted_model_ = fit_forecast_model(y, self.freq, self.model, **self.kwargs)
 
         return self
 
-    def predict(self, h):
+    def predict(self, X):
         check_is_fitted(self, 'fitted_model_')
 
+        h = len(X)
         y_hat = get_forecast(self.fitted_model_, h)
 
         return y_hat
@@ -133,13 +130,15 @@ class ForecastObject(BaseEstimator, RegressorMixin):
         self.model = model
         self.kwargs = kwargs
 
-    def fit(self, y):
+    def fit(self, X, y):
         self.y_ts_ = y
 
         return self
 
-    def predict(self, h):
+    def predict(self, X):
         check_is_fitted(self, 'y_ts_')
+
+        h = len(X)
 
         fitted_model = fit_forecast_model(self.y_ts_, self.freq, self.model, h=h, **self.kwargs)
         y_hat = get_forecast(fitted_model, h)
