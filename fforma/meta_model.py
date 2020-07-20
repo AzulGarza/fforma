@@ -22,45 +22,37 @@ class MetaModels:
     Parameters
     ----------
     models: dict
-        Dictionary of models to train. Ej {'ARIMA': ARIMA()}
-    df_season: pandas df with columns ['unique_id', 'seasonality']
-        For each time series the particular seasonality to be used.
-        All models with seasonality attribute will consider this.
-        If df_season=None (default) initial seasonality is considered.
+        Dictionary of models to train. Ej {'ARIMA': ARIMA}
     scheduler: str
         Dask scheduler. See https://docs.dask.org/en/latest/setup/single-machine.html
         for details.
         Using "threads" can cause severe conflicts.
     """
 
-    def __init__(self, models, df_season=None, scheduler='processes'):
+    def __init__(self, models, scheduler='processes'):
         self.models = models
-        self.df_season = df_season
-        if self.df_season is not None:
-            self.df_season = self.df_season.set_index('unique_id')
         self.scheduler = scheduler
 
     def fit(self, y_panel_df):
         """For each time series fit each model in models.
 
         y_panel_df: pandas df
-            Pandas DataFrame with columns ['unique_id', 'ds', 'y']
+            Pandas DataFrame with columns ['unique_id', 'seasonality', 'y']
         """
 
         fitted_models = []
         uids = []
         name_models = []
         for ts, meta_model in product(y_panel_df.groupby('unique_id'), self.models.items()):
-            uid, y = ts
-            y = y['y'].values
-            name_model, model = deepcopy(meta_model)
+            uid, df = ts
 
-            if self.df_season is not None:
-                seasonality = self.df_season.loc[uid, 'seasonality']
-                if hasattr(model, 'seasonality'):
-                    setattr(model, 'seasonality', seasonality)
-                if hasattr(model, 'freq'):
-                    setattr(model, 'freq', seasonality)
+            y = df['y'].item()
+            y = np.array(y)
+
+            seasonality = df['seasonality'].item()
+
+            name_model, model = deepcopy(meta_model)
+            model = model(seasonality)
 
             fitted_model = dask.delayed(model.fit)(None, y) #TODO: correct None
             fitted_models.append(fitted_model)
@@ -75,7 +67,11 @@ class MetaModels:
                                                 'model': name_models,
                                                 'fitted_model': fitted_models})
 
-        self.fitted_models_ = fitted_models.set_index(['unique_id', 'model'])
+        fitted_models = fitted_models.set_index(['unique_id', 'model']).unstack()
+        fitted_models = fitted_models.droplevel(0, 1).reset_index()
+        fitted_models.columns.name = ''
+
+        self.fitted_models_ = fitted_models.set_index(['unique_id'])
 
         return self
 
@@ -83,7 +79,7 @@ class MetaModels:
         """Predict each univariate model for each time series.
 
         y_hat_df: pandas df
-            Pandas DataFrame with columns ['unique_id', 'ds']
+            Pandas DataFrame with columns ['unique_id', 'horizon']
         """
         check_is_fitted(self, 'fitted_models_')
 
@@ -91,42 +87,29 @@ class MetaModels:
 
         forecasts = []
         uids = []
-        dss = []
-        name_models = []
-        for ts, name_model in product(y_hat_df.groupby('unique_id'), self.models.keys()):
-            uid, df = ts
-            h = len(df)
-            model = self.fitted_models_.loc[(uid, name_model)]
-            model = model.item()
-            y_hat = dask.delayed(model.predict)(df)
-            forecasts.append(y_hat)
-            uids.append(np.repeat(uid, h))
-            dss.append(df['ds'])
-            name_models.append(np.repeat(name_model, h))
+        for uid, df in y_hat_df.groupby('unique_id'):
+            h = df['horizon'].item()
+            df_test = range(h)
+
+            models = self.fitted_models_.loc[[uid]]
+            model_forecasts = []
+            for model_name in self.models.keys():
+                model = models[model_name].item()
+                y_hat = dask.delayed(model.predict)(df_test)
+                model_forecasts.append(y_hat)
+
+            forecasts.append(model_forecasts)
+            uids.append(uid)
 
         task = dask.delayed(forecasts)
         with ProgressBar():
             forecasts = task.compute(scheduler=self.scheduler)
-        forecasts = zip(uids, dss, name_models, forecasts)
 
-        forecasts_df = []
-        for uid, ds, name_model, forecast in forecasts:
-            dict_df = {'unique_id': uid,
-                       'ds': ds,
-                       'model': name_model,
-                       'forecast': forecast}
-            df = dask.delayed(pd.DataFrame.from_dict)(dict_df)
-            forecasts_df.append(df)
+        forecasts = pd.DataFrame(forecasts,
+                                 index=uids,
+                                 columns=self.fitted_models_.columns)
 
-        forecasts = dask.delayed(forecasts_df).compute()
-        forecasts = pd.concat(forecasts)
-
-        forecasts = forecasts.set_index(['unique_id', 'ds', 'model']).unstack()
-        forecasts = forecasts.droplevel(0, 1).reset_index()
-        forecasts.columns.name = ''
-
-        forecasts = forecasts.merge(y_hat_df, how='left',
-                                    on=['unique_id', 'ds'])
+        forecasts = forecasts.rename_axis('unique_id').reset_index()
 
 
         return forecasts
