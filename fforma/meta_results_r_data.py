@@ -24,8 +24,6 @@ def maybe_download_decompress(directory):
 
     Parameters
     ----------
-    filename: str
-        Filename of M4 data with format /Type/Frequency.csv. Example: /Test/Daily-train.csv
     directory: str
         Custom directory where data will be downloaded.
     """
@@ -58,22 +56,33 @@ def maybe_download_decompress(directory):
         size = os.path.getsize(filepath)
         print('Successfully downloaded', filename, size, 'bytes.')
 
-    decompressed_data_directory = compressed_data_directory + '/decompressed_data'
+    if not data_already_present(directory, kind='decompressed'):
+        decompressed_data_directory = compressed_data_directory + '/decompressed_data'
 
-    tar = tarfile.open(filepath, 'r:gz')
-    tar.extractall(path=decompressed_data_directory)
-    tar.close()
+        tar = tarfile.open(filepath, 'r:gz')
+        tar.extractall(path=decompressed_data_directory)
+        tar.close()
 
-    print('Successfully decompressed ', decompressed_data_directory)
+        print('Successfully decompressed ', decompressed_data_directory)
 
-def r_data_already_present(directory):
-    needed_r_data = ('/processed_data/train-features.csv',
-                     '/processed_data/train-ff.csv',
-                     '/processed_data/train-xx.csv',
-                     '/processed_data/test-features.csv',
-                     '/processed_data/test-ff.csv')
+def data_already_present(directory, kind):
+    """
+    kind: str
+        Can be 'r' o 'decompressed'.
+    """
+    if kind == 'r':
+        needed_data = ('/processed_data/train-features.csv',
+                       '/processed_data/train-ff.csv',
+                       '/processed_data/train-xx.csv',
+                       '/processed_data/test-features.csv',
+                       '/processed_data/test-ff.csv')
+    elif kind == 'decompressed':
+        main_dir = '/raw/decompressed_data/M4metaresults/data'
+        needed_data = (f'{main_dir}/submission_M4.rda',
+                       f'{main_dir}/meta_M4.rda',
+                       f'{main_dir}/model_M4.rda')
 
-    present = [os.path.exists(directory + dir) for dir in needed_r_data]
+    present = [os.path.exists(directory + dir) for dir in needed_data]
 
     present = all(present)
 
@@ -85,7 +94,7 @@ def prepare_fforma_data(directory, dataset_name=None):
     maybe_download_decompress(directory)
 
     #Prepare data from R
-    if not r_data_already_present(directory):
+    if not data_already_present(directory, kind='r'):
         cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
         res_r = os.system(cmd)
 
