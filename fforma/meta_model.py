@@ -83,7 +83,7 @@ class MetaModels:
         """
         check_is_fitted(self, 'fitted_models_')
 
-        y_hat_df = deepcopy(y_hat_df)
+        y_hat_df = deepcopy(y_hat_df).set_index('unique_id')
 
         forecasts = []
         uids = []
@@ -109,7 +109,9 @@ class MetaModels:
                                  index=uids,
                                  columns=self.fitted_models_.columns)
 
-        forecasts = forecasts.rename_axis('unique_id').reset_index()
+        forecasts = forecasts.rename_axis('unique_id')
+
+        forecasts = y_hat_df.join(forecasts).reset_index()
 
 
         return forecasts
