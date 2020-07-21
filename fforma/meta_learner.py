@@ -17,6 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from fforma.metrics import SMAPE1Loss
+from ESRNN.utils_evaluation import owa
 
 softmax = nn.Softmax(1)
 
@@ -160,31 +161,43 @@ class MetaLearnerNN(object):
         self.use_softmax = self.params.pop('use_softmax', False)
         self.random_seed = random_seed
 
-    def parse_datasets(self, preds_df, y_df):
-
-        horizons = preds_df.groupby('unique_id')['ds'].count().values
+    def pad_long_df(self, long_df):
+        horizons = long_df.groupby('unique_id')['ds'].count().values
         max_horizon = max(horizons)
-
-        # Padding
-        dict_df = {'unique_id':preds_df['unique_id'].unique(),
-                'ds':list(range(1, max_horizon+1))}
+        
+        dict_df = {'unique_id': long_df['unique_id'].unique(),
+                   'ds': list(range(1, max_horizon+1))}
         padding_dict = list(itertools.product(*list(dict_df.values())))
         padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
-        df_padded = padding_dict.merge(preds_df, on=['unique_id','ds'], how='outer')
-        df_padded = df_padded.merge(y_df, on=['unique_id','ds'], how='outer')
-        df_padded = df_padded.fillna(0)
-        df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
+        padded_df = padding_dict.merge(long_df, on=['unique_id','ds'], how='outer')
+        padded_df = padded_df.fillna(0)
+        padded_df = padded_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+        return padded_df, horizons
 
+    def prepare_datasets_for_model(self, X_df, padded_df, horizons):
         # Reshape to tensor
         n_series = len(horizons)
-        n_models = preds_df.columns.size - 2 #2 por unique_id y ds, TODO: sacar hardcodeo
-
-        y = df_padded['y'].values.reshape((n_series, max_horizon))
-        df_padded = df_padded.drop(['unique_id','ds','y'], axis=1)
-        preds = df_padded.values.reshape((n_series, max_horizon, n_models))
+        max_horizon = max(horizons)
+        n_models = padded_df.columns.size - 3 #2 por unique_id y ds, TODO: sacar hardcodeo
+        
+        y = padded_df['y'].values.reshape((n_series, max_horizon))
+        padded_df = padded_df.drop(['unique_id','ds','y'], axis=1)
+        preds = padded_df.values.reshape((n_series, max_horizon, n_models))
         horizons = np.expand_dims(horizons,1)
 
-        return y, preds, horizons, n_series, n_models
+        # Send datasets to torch tensors
+        y = torch.tensor(y, dtype=torch.float32)
+        preds = torch.tensor(preds, dtype=torch.float32)
+        horizons = torch.tensor(horizons, dtype=torch.float32)
+
+        X_df = X_df.set_index(['unique_id'])
+        X = X_df.values
+
+        self.scaler = StandardScaler().fit(X)
+        X = self.scaler.transform(X)
+        X = torch.tensor(X, dtype=torch.float32)
+
+        return X, y, preds, horizons, max_horizon, n_models
 
     def fit(self, X_df, preds_df, y_df, verbose_eval=True):
         """
@@ -197,24 +210,20 @@ class MetaLearnerNN(object):
         """
         torch.manual_seed(self.random_seed)
         np.random.seed(self.random_seed)
+        
+        # Pad predictions and y dataframes
+        preds_df = preds_df.merge(y_df, on=['unique_id','ds'], how='outer')
+        padded_df, horizons = self.pad_long_df(preds_df)
 
-        y, preds, horizons, n_series, n_models = self.parse_datasets(preds_df, y_df)
-        self.y = torch.tensor(y, dtype=torch.float32)
-        self.preds = torch.tensor(preds, dtype=torch.float32)
-        self.horizons = torch.tensor(horizons, dtype=torch.float32)
-        self.n_series = n_series
+        X, y, preds, horizons, max_horizon, n_models = self.prepare_datasets_for_model(X_df, padded_df, horizons)
+        self.horizons = horizons
+        self.max_horizon = max_horizon
         self.n_models = n_models
-
-        X_df = X_df.set_index(['unique_id'])
-        X = X_df.values
-        self.scaler = StandardScaler().fit(X)
-        X = self.scaler.transform(X)
-        X = torch.tensor(X, dtype=torch.float32)
 
         loss = self.params['loss_function']
 
-        self.model = NeuralNetwork(num_numerical_cols=X_df.shape[1],
-                                   output_size=self.n_models,
+        self.model = NeuralNetwork(num_numerical_cols=X.size()[1],
+                                   output_size=n_models,
                                    layers=self.params['layers'],
                                    p=self.params['dropout'],
                                    use_softmax=self.use_softmax)
@@ -229,7 +238,7 @@ class MetaLearnerNN(object):
                               step_size=self.params['lr_scheduler_step_size'],
                               gamma=self.params['lr_decay'])
 
-        train_data = torch.utils.data.TensorDataset(X, self.y, self.preds, self.horizons)
+        train_data = torch.utils.data.TensorDataset(X, y, preds, horizons)
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=self.params['batch_size'])
 
         for epoch in range(self.params['epochs']):
@@ -239,7 +248,7 @@ class MetaLearnerNN(object):
             for i, data in enumerate(train_loader):
                 batch_x, batch_y, batch_preds, batch_h = data
                 batch_weights = 1/batch_h
-
+                
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
                 train_loss = loss(batch_y, batch_y_hat, batch_weights)
@@ -260,25 +269,37 @@ class MetaLearnerNN(object):
 
         return self
 
-    def predict(self, X_df, preds_df, y_df, tmp=1):
+    def predict(self, X_df, preds_df):
         """
         """
-        y_hat_df = y_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
-        y_hat_df = y_hat_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+        n_series = len(X_df)
+        preds_df = preds_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+        pred_horizons = preds_df.groupby('unique_id')['ds'].count().values
 
-        y_df = y_df.drop(['y_hat_naive2'], axis=1)
-        _, preds_test, _, _, _ = self.parse_datasets(preds_df, y_df)
-
-        preds_test = torch.tensor(preds_test, dtype=torch.float32)
-
-        self.model.eval()
+        # Prepare test data
+        padded_df, _ = self.pad_long_df(preds_df)
+        padded_df = padded_df.drop(['unique_id','ds'], axis=1)
+        preds = padded_df.values.reshape(n_series, self.max_horizon, self.n_models)
+        preds = torch.tensor(preds, dtype=torch.float32)
 
         X_df = X_df.set_index(['unique_id'])
         X = X_df.values
         X = self.scaler.transform(X)
         X = torch.tensor(X, dtype=torch.float32)
 
-        forecast = self.model(X, preds_test)
-        y_hat_df['y_hat'] = forecast.data.numpy().flatten()
+        # Forecast
+        with torch.no_grad():
+            self.model.eval()
+            forecast = self.model(X, preds)
 
-        return y_hat_df
+        y_hat_padded = forecast.data.numpy().flatten()
+
+        # Despadeo
+        y_hat_padded = y_hat_padded.reshape((n_series, self.max_horizon))
+        y_hat = []
+        for i in range(n_series):
+            y_hat_i = y_hat_padded[i, :pred_horizons[i]]
+            y_hat.append(y_hat_i)
+        y_hat = np.hstack(y_hat)
+        
+        return y_hat
