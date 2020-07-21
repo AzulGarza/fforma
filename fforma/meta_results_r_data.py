@@ -30,7 +30,7 @@ def maybe_download_decompress(directory):
     directory: str
         Custom directory where data will be downloaded.
     """
-    root_fforma_data = directory + '/fforma_data'
+    root_fforma_data = directory + '/m4_meta_data'
     if not os.path.exists(root_fforma_data):
         os.mkdir(root_fforma_data)
 
@@ -78,13 +78,14 @@ def data_already_present(directory, kind):
         Can be 'r' o 'decompressed'.
     """
     if kind == 'r':
-        needed_data = ('/fforma_data/processed_data/train-features.csv',
-                       '/fforma_data/processed_data/train-ff.csv',
-                       '/fforma_data/processed_data/train-xx.csv',
-                       '/fforma_data/processed_data/test-features.csv',
-                       '/fforma_data/processed_data/test-ff.csv')
+        main_dir = '/m4_meta_data/processed_data'
+        needed_data = (f'{main_dir}/train-features.csv',
+                       f'{main_dir}/train-ff.csv',
+                       f'{main_dir}/train-xx.csv',
+                       f'{main_dir}/test-features.csv',
+                       f'{main_dir}/test-ff.csv')
     elif kind == 'decompressed':
-        main_dir = '/fforma_data/raw/decompressed_data/M4metaresults/data'
+        main_dir = '/m4_meta_data/raw/decompressed_data/M4metaresults/data'
         needed_data = (f'{main_dir}/submission_M4.rda',
                        f'{main_dir}/meta_M4.rda',
                        f'{main_dir}/model_M4.rda')
@@ -107,7 +108,7 @@ def prepare_fforma_data(directory, dataset_name=None):
 
         assert res_r == 0, 'Some error happened with R processing'
 
-    root_processed_data = directory + '/fforma_data/processed_data'
+    root_processed_data = directory + '/m4_meta_data/processed_data'
 
     X_train_df = pd.read_csv(root_processed_data + '/train-features.csv')
     preds_train_df = pd.read_csv(root_processed_data + '/train-ff.csv')
