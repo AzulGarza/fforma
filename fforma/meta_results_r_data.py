@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from tqdm import tqdm
 import requests
 import os
 import tarfile
 import subprocess
+
 import pandas as pd
+
+from tqdm import tqdm
+from fforma.m4_data import prepare_m4_data, prepare_full_m4_data
 
 URL = 'https://github.com/pmontman/M4metaresults/releases/download/v0.0.0.9000/M4metaresults_0.0.0.9000.tar.gz'
 
@@ -27,7 +30,11 @@ def maybe_download_decompress(directory):
     directory: str
         Custom directory where data will be downloaded.
     """
-    compressed_data_directory = directory + "/raw"
+    root_fforma_data = directory + '/fforma_data'
+    if not os.path.exists(root_fforma_data):
+        os.mkdir(root_fforma_data)
+
+    compressed_data_directory = root_fforma_data + '/raw'
 
     if not os.path.exists(compressed_data_directory):
         os.mkdir(compressed_data_directory)
@@ -71,13 +78,13 @@ def data_already_present(directory, kind):
         Can be 'r' o 'decompressed'.
     """
     if kind == 'r':
-        needed_data = ('/processed_data/train-features.csv',
-                       '/processed_data/train-ff.csv',
-                       '/processed_data/train-xx.csv',
-                       '/processed_data/test-features.csv',
-                       '/processed_data/test-ff.csv')
+        needed_data = ('/fforma_data/processed_data/train-features.csv',
+                       '/fforma_data/processed_data/train-ff.csv',
+                       '/fforma_data/processed_data/train-xx.csv',
+                       '/fforma_data/processed_data/test-features.csv',
+                       '/fforma_data/processed_data/test-ff.csv')
     elif kind == 'decompressed':
-        main_dir = '/raw/decompressed_data/M4metaresults/data'
+        main_dir = '/fforma_data/raw/decompressed_data/M4metaresults/data'
         needed_data = (f'{main_dir}/submission_M4.rda',
                        f'{main_dir}/meta_M4.rda',
                        f'{main_dir}/model_M4.rda')
@@ -100,22 +107,28 @@ def prepare_fforma_data(directory, dataset_name=None):
 
         assert res_r == 0, 'Some error happened with R processing'
 
-    feats_train = pd.read_csv(directory + '/processed_data/train-features.csv')
-    X_models_train = pd.read_csv(directory + '/processed_data/train-ff.csv')
-    y_models_train = pd.read_csv(directory + '/processed_data/train-xx.csv')
+    root_processed_data = directory + '/fforma_data/processed_data'
 
-    feats_test = pd.read_csv(directory + '/processed_data/test-features.csv')
-    X_models_test = pd.read_csv(directory + '/processed_data/test-ff.csv')
+    X_train_df = pd.read_csv(root_processed_data + '/train-features.csv')
+    preds_train_df = pd.read_csv(root_processed_data + '/train-ff.csv')
+    y_train_df = pd.read_csv(root_processed_data + '/train-xx.csv')
+
+    X_test_df = pd.read_csv(root_processed_data + '/test-features.csv')
+    preds_test_df = pd.read_csv(root_processed_data + '/test-ff.csv')
+
 
     if dataset_name is not None:
         kind = dataset_name[0]
 
-        feats_train = feats_train[feats_train['unique_id'].str.startswith(kind)]
-        X_models_train = X_models_train[X_models_train['unique_id'].str.startswith(kind)]
-        y_models_train = y_models_train[y_models_train['unique_id'].str.startswith(kind)]
+        X_train_df = X_train_df[X_train_df['unique_id'].str.startswith(kind)]
+        preds_train_df = preds_train_df[preds_train_df['unique_id'].str.startswith(kind)]
+        y_train_df = y_train_df[y_train_df['unique_id'].str.startswith(kind)]
 
-        feats_test = feats_test[feats_test['unique_id'].str.startswith(kind)]
-        X_models_test = X_models_test[X_models_test['unique_id'].str.startswith(kind)]
+        X_test_df = X_test_df[X_test_df['unique_id'].str.startswith(kind)]
+        preds_test_df = preds_test_df[preds_test_df['unique_id'].str.startswith(kind)]
+        *_, y_test_df = prepare_m4_data(dataset_name, directory, 100_000)
+    else:
+        *_, y_test_df = prepare_full_m4_data(directory)
 
 
-    return feats_train, X_models_train, y_models_train, feats_test, X_models_test
+    return X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_test_df
