@@ -239,17 +239,13 @@ def prepare_m4_data(dataset_name, directory, num_obs):
     return X_train_df, y_train_df, X_test_df, y_naive2_df
 
 def prepare_full_m4_data(directory):
+    """
+    """
+    data = [prepare_m4_data(dataset, directory, 100_000) for dataset in seas_dict.keys()]
 
-    data = []
-    for dataset_name in seas_dict.keys():
-        dataset_data = prepare_m4_data(dataset_name, directory, 100_000)
-        data.append(dataset_data)
+    data = zip(*data)
+    data = list(data)
 
-    X_train_df, y_train_df, X_test_df, y_naive2_df = zip(*data)
-
-    X_train_df = pd.concat(X_train_df).reset_index(drop=True)
-    y_train_df = pd.concat(y_train_df).reset_index(drop=True)
-    X_test_df = pd.concat(X_test_df).reset_index(drop=True)
-    y_naive2_df = pd.concat(y_naive2_df).reset_index(drop=True)
+    X_train_df, y_train_df, X_test_df, y_test_df = [pd.concat(tup).reset_index(drop=True) for tup in data]
 
     return X_train_df, y_train_df, X_test_df, y_naive2_df
