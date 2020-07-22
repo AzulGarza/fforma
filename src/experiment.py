@@ -216,6 +216,6 @@ if __name__ == '__main__':
 
     main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.gpu_id)
 
-# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 0 --end_id 1 --gpu_id 1
+# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 0 --end_id 5 --generate_grid 1 --gpu_id 1
 
 
