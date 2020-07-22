@@ -14,8 +14,8 @@ DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 grid_qfforma = {'model_type': ['qfforma'],
                 'n_epochs' : [5, 20, 50],
-                'lr': [1e-4, 1e-3, 1e-2, 1e-1],
-                'batch_size': [4, 32, 64],
+                'lr': [1e-4, 1e-3, 1e-2],
+                'batch_size': [128],
                 'gradient_eps': [1e-8],
                 'weight_decay': [0],
                 'lr_scheduler_step_size': [5],
@@ -216,6 +216,6 @@ if __name__ == '__main__':
 
     main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.gpu_id)
 
-# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 0 --end_id 5 --generate_grid 1 --gpu_id 1
+# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3
 
 
