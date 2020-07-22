@@ -39,7 +39,7 @@ def generate_grids(grid_dir, model_specs):
         files = glob.glob(grid_dir+'*')
         for f in files:
             os.remove(f)
-            
+
     # Read/Generate hyperparameter grid
     specs_list = list(itertools.product(*list(model_specs.values())))
     model_specs_df = pd.DataFrame(specs_list, columns=list(model_specs.keys()))
@@ -51,7 +51,17 @@ def generate_grids(grid_dir, model_specs):
     grid_file_name = grid_dir + 'model_grid_qfforma.csv'
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
 
-def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
+def uploat_to_s3(mc_row, evaluation_dict, dataset):
+
+    mc_dict = mc_row.to_dict()
+    data = {**mc_dict, **evaluation_dict}
+    data = pd.DataFrame(data, index=[0])
+
+    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{mc.model_id}.p'
+    pd.to_pickle(data, pickle_file)
+
+
+def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
 
     # Read/Generate hyperparameter grid
     if generate:
@@ -92,7 +102,7 @@ def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
         print(47*'=' + '\n')
 
         # Check if result already exists
-        output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
+        #output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
 
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
@@ -126,22 +136,21 @@ def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
         model_owa, model_mase, model_smape = evaluate_model_prediction(y_train_df=y_insample_df,
                                                                        outputs_df=y_hat_df,
                                                                        seasonalities=seasonalities)
-            
+
         print("OWA: {:03.3f}".format(model_owa))
         print("MASE: {:03.3f}".format(model_mase))
         print("SMAPE: {:03.3f}".format(model_smape))
-                
+
         evaluation_dict = {'id': mc.model_id,
                           'owa': model_owa,
                           'mase': model_mase,
                           'smape': model_smape}
 
         # Output evaluation
-        with open(output_file, "wb") as f:
-            pickle.dump(evaluation_dict, f)
+        uploat_to_s3(mc, evaluation_dict, dataset)
 
 def read_data(dataset='M4'):
-    
+
     # Load and parse data
     data_file = './data/experiment/{}_pickle.p'.format(dataset)
 
@@ -200,12 +209,12 @@ def parse_args():
 
 def main(dataset, start_id, end_id, generate_grid, gpu_id):
 
-    results_dir = './results/{}/'.format(dataset)
+    #results_dir = './results/{}/'.format(dataset)
     print("Reading data...")
     data = read_data(dataset)
 
     print('Training model...')
-    train_qfforma(data, start_id, end_id, results_dir, generate_grid, gpu_id)
+    train_qfforma(data, start_id, end_id, dataset, generate_grid, gpu_id)
 
 if __name__ == '__main__':
 
@@ -217,5 +226,3 @@ if __name__ == '__main__':
     main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.gpu_id)
 
 # PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3
-
-
