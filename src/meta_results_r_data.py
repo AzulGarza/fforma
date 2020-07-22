@@ -202,6 +202,20 @@ def prepare_fforma_data_m3_tourism(directory, dataset_name=None, kind='M3'):
     y_insample_train_df, X_train_df, preds_train_df, \
         y_insample_test_df, X_test_df, preds_test_df = pd.read_pickle(filepath)
 
+    #Prints of missing values
+    missing_mean_train = X_train_df.isna().mean() * 100
+    missing_mean_train = missing_mean_train[missing_mean_train > 0]
+    print('% of missing values, test set', missing_mean_train, '\n', sep='\n')
+
+    missing_mean_test = X_test_df.isna().mean() * 100
+    missing_mean_test = missing_mean_test[missing_mean_test > 0]
+    print('% of missing values, test set', missing_mean_test, '\n', sep='\n')
+
+    #Replacing NA with 0 in features
+    print("Replacing with zeros...")
+    X_train_df = X_train_df.fillna(0)
+    X_test_df = X_test_df.fillna(0)
+
     #Insample data processing
     cols_to_drop_in = ['ds', 'horizon', 'seasonality']
     y_insample_train_df = y_insample_train_df.drop(cols_to_drop_in + ['y_val'], 1)
