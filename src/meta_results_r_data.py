@@ -7,6 +7,7 @@ import tarfile
 import subprocess
 
 import pandas as pd
+import numpy as np
 
 from tqdm import tqdm
 from fforma.m4_data import prepare_m4_data, prepare_full_m4_data
@@ -189,14 +190,30 @@ def maybe_download_m3(directory):
 
     return filepath
 
-def prepare_fforma_data_m3(directory, dataset_name=None):
+def prepare_fforma_data_m3_tourism(directory, dataset_name=None, kind='M3'):
 
     #Check downloaded data
-    filepath = maybe_download_m3(directory)
+    if kind=='M3':
+        filepath = maybe_download_m3(directory)
+    elif kind=='TOURISM':
+        filepath = maybe_download_tourism(directory)
 
 
-    X_train_df, preds_train_df, X_test_df, preds_test_df = pd.read_pickle(filepath)
+    y_insample_train_df, X_train_df, preds_train_df, \
+        y_insample_test_df, X_test_df, preds_test_df = pd.read_pickle(filepath)
 
+    #Insample data processing
+    cols_to_drop_in = ['ds', 'horizon', 'seasonality']
+    y_insample_train_df = y_insample_train_df.drop(cols_to_drop_in + ['y_val'], 1)
+    y_insample_test_df = y_insample_test_df.drop(cols_to_drop_in + ['y_test'], 1)
+
+    y_insample_train_df['ds'] = y_insample_train_df['y'].apply(lambda x: np.arange(1, len(x) + 1))
+    y_insample_test_df['ds'] = y_insample_test_df['y'].apply(lambda x: np.arange(1, len(x) + 1))
+
+    y_insample_train_df = wide_to_long(y_insample_train_df, ['ds', 'y'])
+    y_insample_test_df = wide_to_long(y_insample_test_df, ['ds', 'y'])
+
+    # Preds data processing
     preds_train_df = preds_train_df.drop('horizon', 1).rename(columns={'y_val': 'y'})
     preds_test_df = preds_test_df.drop('horizon', 1).rename(columns={'y_test': 'y'})
 
@@ -208,8 +225,10 @@ def prepare_fforma_data_m3(directory, dataset_name=None):
     preds_train_df = wide_to_long(preds_train_df, cols_wide_to_long)
     preds_test_df = wide_to_long(preds_test_df, cols_wide_to_long)
 
-    preds_train_df, y_train_df = preds_train_df.drop(['y', 'y_hat_naive2'], 1), preds_train_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
-    preds_test_df, y_test_df = preds_test_df.drop(['y', 'y_hat_naive2'], 1), preds_test_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
+    cols_to_drop_preds = ['y', 'y_hat_naive2']
+    cols_to_save_preds = ['unique_id', 'ds', 'y', 'y_hat_naive2']
+    preds_train_df, y_train_df = preds_train_df.drop(cols_to_drop_preds, 1), preds_train_df[cols_to_save_preds]
+    preds_test_df, y_test_df = preds_test_df.drop(cols_to_drop_preds, 1), preds_test_df[cols_to_save_preds]
 
     if dataset_name is not None:
         kind = dataset_name[0]
@@ -223,10 +242,10 @@ def prepare_fforma_data_m3(directory, dataset_name=None):
         y_test_df = y_test_df[y_test_df['unique_id'].str.startswith(kind)]
 
 
-    return X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_test_df
+    return X_train_df, preds_train_df, y_insample_train_df, y_train_df, X_test_df, preds_test_df, y_insample_test_df, y_test_df
 
 ################################################################################
-################# M3 processes
+################# TOURISM
 ################################################################################
 
 def maybe_download_tourism(directory):
@@ -273,42 +292,6 @@ def maybe_download_tourism(directory):
 
     return filepath
 
-def prepare_fforma_data_tourism(directory, dataset_name=None):
-
-    #Check downloaded data
-    filepath = maybe_download_tourism(directory)
-
-
-    X_train_df, preds_train_df, X_test_df, preds_test_df = pd.read_pickle(filepath)
-
-    preds_train_df = preds_train_df.drop('horizon', 1).rename(columns={'y_val': 'y'})
-    preds_test_df = preds_test_df.drop('horizon', 1).rename(columns={'y_test': 'y'})
-
-    cols_wide_to_long = ['ds', 'auto_arima_forec', 'ets_forec',
-                         'naive_forec', 'nnetar_forec', 'rw_drift_forec',
-                         'snaive_forec', 'stlm_ar_forec', 'tbats_forec',
-                         'theta_forec', 'y', 'y_hat_naive2']
-
-    preds_train_df = wide_to_long(preds_train_df, cols_wide_to_long)
-    preds_test_df = wide_to_long(preds_test_df, cols_wide_to_long)
-
-    preds_train_df, y_train_df = preds_train_df.drop(['y', 'y_hat_naive2'], 1), preds_train_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
-    preds_test_df, y_test_df = preds_test_df.drop(['y', 'y_hat_naive2'], 1), preds_test_df[['unique_id', 'ds', 'y', 'y_hat_naive2']]
-
-    if dataset_name is not None:
-        kind = dataset_name[0]
-
-        X_train_df = X_train_df[X_train_df['unique_id'].str.startswith(kind)]
-        preds_train_df = preds_train_df[preds_train_df['unique_id'].str.startswith(kind)]
-        y_train_df = y_train_df[y_train_df['unique_id'].str.startswith(kind)]
-
-        X_test_df = X_test_df[X_test_df['unique_id'].str.startswith(kind)]
-        preds_test_df = preds_test_df[preds_test_df['unique_id'].str.startswith(kind)]
-        y_test_df = y_test_df[y_test_df['unique_id'].str.startswith(kind)]
-
-
-    return X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_test_df
-
 
 ################################################################################
 ################# Main function
@@ -319,7 +302,11 @@ def prepare_fforma_data(directory, dataset_name=None, kind='M4'):
     """
     if kind == 'M4':
         return prepare_fforma_data_m4(directory, dataset_name)
-    elif kind == 'M3':
-        return prepare_fforma_data_m3(directory, dataset_name)
-    elif kind == 'TOURISM':
-        return prepare_fforma_data_tourism(directory, dataset_name)
+    else:
+        X_train_df, preds_train_df, _, y_train_df, \
+            X_test_df, preds_test_df, \
+            y_insample_df, y_test_df = prepare_fforma_data_m3_tourism(directory,
+                                                                      dataset_name,
+                                                                      kind=kind)
+
+        return X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_insample_df, y_test_df
