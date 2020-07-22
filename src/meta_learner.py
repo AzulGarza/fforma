@@ -158,6 +158,9 @@ class MetaLearnerNN(object):
         self.params = deepcopy(params)
         self.use_softmax = self.params.pop('use_softmax', False)
 
+    def to_device(self, x):
+        return x.to(self.params['device'])
+
     def pad_long_df(self, long_df):
         horizons = long_df.groupby('unique_id')['ds'].count().values
         max_horizon = max(horizons)
@@ -224,6 +227,7 @@ class MetaLearnerNN(object):
                                    layers=self.params['layers'],
                                    p=self.params['dropout'],
                                    use_softmax=self.use_softmax)
+        self.model = self.to_device(self.model)
 
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      betas=(0.9, 0.999),
@@ -243,7 +247,13 @@ class MetaLearnerNN(object):
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
-                batch_x, batch_y, batch_preds, batch_h = data
+                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
+
+                # batch_x = batch_x.to(self.params['device'])
+                # batch_y = batch_y.to(self.params['device'])
+                # batch_preds = batch_preds.to(self.params['device'])
+                # batch_h = batch_h.to(self.params['device'])
+            
                 batch_weights = 1/batch_h
                 
                 optimizer.zero_grad()
