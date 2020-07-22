@@ -8,7 +8,6 @@ import time
 
 import numpy as np
 import pandas as pd
-import torch
 import glob
 
 from utils import evaluate_model_prediction
@@ -75,11 +74,14 @@ def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
     y_test_df = data['y_test_df']
 
     os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
+
+    import torch
     from fforma import FFORMA
     from metrics import WeightedPinballLoss
     from meta_learner import MetaLearnerNN
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda'
 
     # Parse hyper parameter data frame
     for i in range(start_id, end_id):
