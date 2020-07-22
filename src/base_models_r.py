@@ -57,7 +57,6 @@ def fit_forecast_model(y, freq, model, **kwargs):
     pandas2ri.activate()
 
     freq = deepcopy(freq)
-    #freq = freq #IntVector(freq) if isinstance(freq, int) else freq
 
     rstring = """
      function(y, freq, ...){
@@ -219,6 +218,41 @@ class STLM(ForecastModel):
     def __init__(self, freq, **kwargs):
         assert freq > 1, "STLM cannot handle non seasonal time series"
         super().__init__(model='stlm', freq=freq, **kwargs)
+
+class STLMFFORMA(ForecastModel):
+    """Wrapper of
+        stlm_ar_forec <- function(x, h) {
+          model <- tryCatch({
+            forecast::stlm(x, modelfunction = stats::ar)
+          }, error = function(e) forecast::auto.arima(x, d=0,D=0))
+          forecast::forecast(model, h=h)$mean
+        }
+
+        from R.
+
+    Parameters
+    ----------
+    freq: int or iterable
+        Frequency of the time series.
+        Can be multiple seasonalities. (Last seasonality
+        considered as frequency.)
+
+    References
+    ----------
+    https://github.com/robjhyndman/M4metalearning/blob/master/R/forec_methods_list.R
+    """
+
+    def __init__(self, freq, **kwargs):
+        assert freq > 1, "STLM cannot handle non seasonal time series"
+        super().__init__(model='stlm', freq=freq, **kwargs)
+
+    def fit(self, X, y):
+        try:
+            self.fitted_model_ = fit_forecast_model(y, self.freq, self.model, **self.kwargs)
+        except:
+            self.fitted_model_ = fit_forecast_model(y, self.freq, 'auto.arima', d=0, D=0)
+
+        return self
 
 ##############################################################################
 ######## FORECAST OBJECTS ####################################################

@@ -282,6 +282,37 @@ class LassoQuantileRegressionAveraging:
 
         return y_hat
 
+def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
+    # make sure `lst_cols` is list-alike
+    if (lst_cols is not None
+        and len(lst_cols) > 0
+        and not isinstance(lst_cols, (list, tuple, np.ndarray, pd.Series))):
+        lst_cols = [lst_cols]
+    # all columns except `lst_cols`
+    idx_cols = df.columns.difference(lst_cols)
+    # calculate lengths of lists
+    lens = df[lst_cols[0]].str.len()
+    # preserve original index values
+    idx = np.repeat(df.index.values, lens)
+    # create "exploded" DF
+    res = (pd.DataFrame({
+                col:np.repeat(df[col].values, lens)
+                for col in idx_cols},
+                index=idx)
+             .assign(**{col:np.concatenate(df.loc[lens>0, col].values)
+                            for col in lst_cols}))
+    # append those rows that have empty lists
+    if (lens == 0).any():
+        # at least one list in cells is empty
+        res = (res.append(df.loc[lens==0, idx_cols], sort=False)
+                  .fillna(fill_value))
+    # revert the original index order
+    res = res.sort_index()
+    # reset index if requested
+    if not preserve_index:
+        res = res.reset_index(drop=True)
+    return res
+
 def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
                                                           directory=directory,
@@ -325,10 +356,10 @@ def evaluate_model_prediction(y_train_df, outputs_df, seasonalities):
     y_naive2_df.rename(columns={'y_hat_naive2': 'y_hat'}, inplace=True)
     y_insample = y_train_df.filter(['unique_id', 'ds', 'y'])
 
-    model_owa, model_mase, model_smape = owa(y_df, y_hat_df, 
+    model_owa, model_mase, model_smape = owa(y_df, y_hat_df,
                                              y_naive2_df, y_insample,
                                              seasonalities=seasonalities)
-    
+
     return model_owa, model_mase, model_smape
 
 def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
@@ -349,7 +380,7 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
     Quarterly 4, Daily 7, Monthly 12
     return: OWA
     """
-    total_mase = evaluate_panel(y_panel, y_hat_panel, mase, 
+    total_mase = evaluate_panel(y_panel, y_hat_panel, mase,
                                 y_insample, seasonalities)
     total_mase_naive2 = evaluate_panel(y_panel, y_naive2_panel, mase,
                                         y_insample, seasonalities)
@@ -412,7 +443,7 @@ def evaluate_panel(y_panel, y_hat_panel, metric,
             #seasonality = seasonalities[u_id]
             freq = u_id[0]
             seasonality = FREQ_DICT[freq]
-            
+
             top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
             bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
             y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
@@ -458,6 +489,6 @@ def mase(y, y_hat, y_train, seasonality):
     if masep==0:
         print('y_train', y_train)
         print('y_hat_naive', y_hat_naive)
-        
+
     mase = np.mean(abs(y - y_hat)) / masep
     return mase
