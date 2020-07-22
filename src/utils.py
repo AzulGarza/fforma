@@ -25,7 +25,7 @@ freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
 
-FREQ_DICT = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
+FREQ_DICT = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1, 'O': 1}
 
 def prepare_data(df, h, min_size_per_series=None, max_series=None, regressors=None):
     """Splits the data in train and validation sets."""
@@ -312,6 +312,31 @@ def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
     if not preserve_index:
         res = res.reset_index(drop=True)
     return res
+
+def long_to_wide(long_df):
+    horizontal_df = pd.DataFrame(columns=long_df.columns)
+    cols_to_parse = list(set(long_df.columns)-set(['unique_id']))
+    long_df = long_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    unique_ids = long_df['unique_id'].unique()
+    n_series = len(unique_ids)
+    max_len = long_df.groupby('unique_id')['ds'].count().max()
+
+    dict_df = {'unique_id':unique_ids,
+               'ds':list(range(1, max_len+1))}
+    padding_dict = list(product(*list(dict_df.values())))
+    padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
+    df_padded = padding_dict.merge(long_df, on=['unique_id','ds'], how='outer')
+    df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
+
+    for col in cols_to_parse:
+        values = df_padded[col].values
+        values = values.reshape((n_series, max_len))
+        values = values.tolist()
+        horizontal_df[col] = values
+
+    horizontal_df['unique_id'] = unique_ids
+
+    return horizontal_df
 
 def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,

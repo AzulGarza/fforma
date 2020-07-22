@@ -13,20 +13,62 @@ from copy import deepcopy
 from tqdm import tqdm
 from scipy.special import softmax
 from sklearn.model_selection import train_test_split
+from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
+from src.meta_evaluation import calc_errors_widing
 from src.metrics.pytorch_metrics import SMAPE1Loss
 
-softmax = nn.Softmax(1)
-
 class MetaLearner(object):
+    """Feature-based Forecast Model Averaging (FFORMA).
+
+
+    Parameters
+    ----------
+    params: dict
+        Dictionary of paratemeters to train gradient boosting.
+    h: int
+        Forecast horizon.
+    seasonality: int
+        Time series frequency.
+    base_models: dict
+        Dictionary of models to train. Ej {'ARIMA': ARIMA()}.
+        Default None. Models: 'SeasonalNaive', 'Naive2', 'RandomWalkDrift'.
+    metric: str
+        Metric used to calculate contribution to error.
+        By default 'owa' is used.
+    early_stopping_rounds: int
+        Maximum number of gradient boosting rounds.
+        Default 10.
+    threads: int
+        Number of threads to use.
+        Use None (default) for parallel processing.
+    random_seed: int
+        Random seed.
+        Default 1.
     """
 
-    """
-    def __init__(self, params, contribution_to_error, random_seed=1):
-        self.params = params
-        self.contribution_to_error = contribution_to_error
+    def __init__(self, params, random_seed=1):
+        params = deepcopy(params)
+        self.seasonality = params.pop('seasonality', None)
+        self.early_stopping_rounds = params.pop('early_stopping_rounds', 10)
+
+        self.df_seasonality = params.pop('df_seasonality')
+        self.benchmark_model = params.pop('benchmark_model', 'y_hat_naive2')
+
+        threads = params.pop('threads', None)
+        if threads is None:
+            threads = mp.cpu_count()
+
+        init_params = {
+            'objective': 'multiclass',
+            'nthread': threads,
+            'seed': random_seed
+        }
+
+        self.params = {**params, **init_params}
+
         self.random_seed = random_seed
 
     def fobj(self, predt, dtrain):
@@ -60,9 +102,49 @@ class MetaLearner(object):
 
         return 'FFORMA-loss', fforma_loss, False
 
-    def fit(self, features, best_models, early_stopping_rounds, verbose_eval):
+    def fit(self, X_train_df, preds_train_df, y_train_df, y_insample_df, verbose=True):
+        """Fits FFORMA.
+
+
+        Parameters
+        ----------
+        X_train_df: pandas df
+            Pandas DataFrame with features.
+        preds_train_df: pandas df or None
+            Pandas DataFrame with columns ['unique_id', 'ds'].
+            Predictions for the validation set.
+            Use None to calculate on the fly.
+        y_train_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
         """
-        """
+        # self.errors, self.features, self.val_predictions, \
+        #     self.train_df, self.val_df, \
+        #         self.full_df = self.pre_fit(X_df=X_df, y_df=y_df,
+        #                                     val_predictions=val_predictions,
+        #                                     errors=errors,
+        #                                     features=features)
+        features = X_train_df.set_index('unique_id').values
+
+        print('Calculating errors...')
+        errors = calc_errors_widing(preds_df=preds_train_df,
+                                    y_panel_df=y_train_df,
+                                    y_insample_df=y_insample_df,
+                                    seasonality=self.df_seasonality,
+                                    benchmark_model=self.benchmark_model)
+
+        best_models_count = errors.idxmin(axis=1).value_counts()
+        best_models_count = pd.Series(best_models_count, index=errors.columns)
+        loser_models = best_models_count[best_models_count.isna()].index.to_list()
+
+        if len(loser_models) > 0:
+            print('Models {} never win.'.format(' '.join(loser_models)))
+            print('Removing it...\n')
+            errors = errors.copy().drop(columns=loser_models)
+
+        self.contribution_to_error = errors.values
+        best_models = self.contribution_to_error.argmin(axis=1)
+
+        print('Training...')
         feats_train, \
             feats_val, \
             best_models_train, \
@@ -83,24 +165,65 @@ class MetaLearner(object):
         dvalid = lgb.Dataset(data=feats_val, label=indices_val)
         valid_sets = [dtrain, dvalid]
 
-        self.gbm_model = lgb.train(
+        self.gbm_model_ = lgb.train(
             params=params,
             train_set=dtrain,
             fobj=self.fobj,
             num_boost_round=num_round,
             feval=self.feval,
             valid_sets=valid_sets,
-            early_stopping_rounds=early_stopping_rounds,
-            verbose_eval=verbose_eval
+            early_stopping_rounds=self.early_stopping_rounds,
+            verbose_eval=verbose
         )
 
-    def predict(self, features, tmp=1):
-        """
-        """
-        scores = self.gbm_model.predict(features, raw_score=True)
-        weights = softmax(scores / tmp, axis=1)
-        return weights
+        return self
 
+    def predict(self, X_df, tmp=1, base_model_preds=None):
+        """Predicts FFORMA.
+
+
+        Parameters
+        ----------
+        X_df: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds'] and exogenous vars.
+        tmp: float
+
+        base_model_preds: pandas df or None
+            Pandas DataFrame with columns ['unique_id', 'ds'] and
+            predictions to ensemble.
+            Predictions for the validation set.
+            Use None to calculate on the fly.
+
+        Return
+        ------
+        pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y_hat']
+            where 'y_hat' denotes the fforma predictions.
+        """
+        check_is_fitted(self, 'gbm_model_')
+        #TODO: assert match X_df and self.full_df and features
+
+        if base_model_preds is None:
+            base_model_preds = self._fit_predict_base_models(train_df=self.full_df,
+                                                             val_df=X_df)
+        features = X_df.set_index('unique_id')
+
+        scores = self.gbm_model_.predict(features.values, raw_score=True)
+        weights = softmax(scores / tmp, axis=1)
+
+        base_model_preds = base_model_preds.set_index(['unique_id', 'ds'])
+
+        weights = pd.DataFrame(weights,
+                               index=features.index,
+                               columns=base_model_preds.columns)
+
+        y_hat = weights * base_model_preds
+
+        y_hat_df = base_model_preds
+        y_hat_df['y_hat'] = y_hat.sum(axis=1)
+        y_hat_df = y_hat_df.reset_index()
+
+        return y_hat_df
 ##############################################################################
 ################### CUSTOM
 ##############################################################################
@@ -164,7 +287,7 @@ class MetaLearnerNN(object):
     def pad_long_df(self, long_df):
         horizons = long_df.groupby('unique_id')['ds'].count().values
         max_horizon = max(horizons)
-        
+
         dict_df = {'unique_id': long_df['unique_id'].unique(),
                    'ds': list(range(1, max_horizon+1))}
         padding_dict = list(itertools.product(*list(dict_df.values())))
@@ -179,7 +302,7 @@ class MetaLearnerNN(object):
         n_series = len(horizons)
         max_horizon = max(horizons)
         n_models = padded_df.columns.size - 3 #2 por unique_id y ds, TODO: sacar hardcodeo
-        
+
         y = padded_df['y'].values.reshape((n_series, max_horizon))
         padded_df = padded_df.drop(['unique_id','ds','y'], axis=1)
         preds = padded_df.values.reshape((n_series, max_horizon, n_models))
@@ -210,7 +333,7 @@ class MetaLearnerNN(object):
         """
         torch.manual_seed(self.params['random_seed'])
         np.random.seed(self.params['random_seed'])
-        
+
         # Pad predictions and y dataframes
         preds_df = preds_df.merge(y_df, on=['unique_id','ds'], how='outer')
         padded_df, horizons = self.pad_long_df(preds_df)
@@ -253,9 +376,9 @@ class MetaLearnerNN(object):
                 # batch_y = batch_y.to(self.params['device'])
                 # batch_preds = batch_preds.to(self.params['device'])
                 # batch_h = batch_h.to(self.params['device'])
-            
+
                 batch_weights = 1/batch_h
-                
+
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
                 train_loss = loss(batch_y, batch_y_hat, batch_weights)
@@ -310,5 +433,5 @@ class MetaLearnerNN(object):
             y_hat_i = y_hat_padded[i, :pred_horizons[i]]
             y_hat.append(y_hat_i)
         y_hat = np.hstack(y_hat)
-        
+
         return y_hat
