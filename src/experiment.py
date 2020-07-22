@@ -10,9 +10,6 @@ import numpy as np
 import pandas as pd
 import glob
 
-from utils import evaluate_model_prediction
-from meta_results_r_data import prepare_fforma_data
-
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 grid_qfforma = {'model_type': ['qfforma'],
@@ -77,8 +74,9 @@ def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
 
     import torch
     from fforma import FFORMA
-    from metrics import WeightedPinballLoss
+    from metrics.pytorch_metrics import WeightedPinballLoss
     from meta_learner import MetaLearnerNN
+    from utils import evaluate_model_prediction
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = 'cuda'
