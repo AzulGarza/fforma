@@ -205,7 +205,7 @@ def prepare_fforma_data_m3_tourism(directory, dataset_name=None, kind='M3'):
     #Prints of missing values
     missing_mean_train = X_train_df.isna().mean() * 100
     missing_mean_train = missing_mean_train[missing_mean_train > 0]
-    print('% of missing values, test set', missing_mean_train, '\n', sep='\n')
+    print('% of missing values, train set', missing_mean_train, '\n', sep='\n')
 
     missing_mean_test = X_test_df.isna().mean() * 100
     missing_mean_test = missing_mean_test[missing_mean_test > 0]
