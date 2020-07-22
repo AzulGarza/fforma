@@ -262,7 +262,7 @@ class MetaLearnerNN(object):
                 train_loss.backward()
                 optimizer.step()
 
-                epoch_losses.append(train_loss.data.numpy())
+                epoch_losses.append(train_loss.cpu().data.numpy())
 
             # Decay learning rate
             lr_scheduler.step()
@@ -299,7 +299,7 @@ class MetaLearnerNN(object):
             self.model.eval()
             forecast = self.model(X, preds)
 
-        y_hat_padded = forecast.data.numpy().flatten()
+        y_hat_padded = forecast.cpu().data.numpy().flatten()
 
         # Despadeo
         y_hat_padded = y_hat_padded.reshape((n_series, self.max_horizon))
