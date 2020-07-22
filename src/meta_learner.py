@@ -294,6 +294,8 @@ class MetaLearnerNN(object):
         X = self.scaler.transform(X)
         X = torch.tensor(X, dtype=torch.float32)
 
+        X, preds = map(self.to_device, [X, preds])
+
         # Forecast
         with torch.no_grad():
             self.model.eval()
