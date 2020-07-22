@@ -4,12 +4,11 @@ import argparse
 import itertools
 import ast
 import pickle
+import time
 
 import numpy as np
 import pandas as pd
-
-from utils import evaluate_model_prediction
-from meta_results_r_data import prepare_fforma_data
+import glob
 
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
@@ -25,10 +24,22 @@ grid_qfforma = {'model_type': ['qfforma'],
                 'layers': [[200, 100, 50, 25, 10]],
                 'use_softmax': [False, True],
                 'train_percentile': [0.4, 0.5, 0.6],
-                'random_seed': [1],
-                'device' : ['cpu']}
+                'random_seed': [1]}
 
-def generate_grids(file_name, model_specs):
+def generate_grids(grid_dir, model_specs):
+
+    if not os.path.exists(grid_dir):
+        if not os.path.exists('./results/'):
+            os.mkdir('./results/')
+        os.mkdir(grid_dir)
+
+    if os.path.exists(grid_dir):
+        print("Erasing old files from {}, ctrl+c to cancel \n".format(grid_dir))
+        time.sleep(10)
+        files = glob.glob(grid_dir+'*')
+        for f in files:
+            os.remove(f)
+            
     # Read/Generate hyperparameter grid
     specs_list = list(itertools.product(*list(model_specs.values())))
     model_specs_df = pd.DataFrame(specs_list, columns=list(model_specs.keys()))
@@ -36,17 +47,18 @@ def generate_grids(file_name, model_specs):
     model_specs_df['model_id'] = model_specs_df.index
     np.random.seed(1)
     model_specs_df = model_specs_df.sample(frac=1).reset_index(drop=True)
-    model_specs_df.to_csv(file_name, encoding='utf-8', index=None)
 
-def train_qfforma(data, start_id, end_id, results_dir, gpu_id=0):
+    grid_file_name = grid_dir + 'model_grid_qfforma.csv'
+    model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
+
+def train_qfforma(data, start_id, end_id, results_dir, generate, gpu_id=0):
 
     # Read/Generate hyperparameter grid
-    grid_file = results_dir + '/model_grid_qfforma.csv'
-    if not os.path.exists(results_dir):
-        os.mkdir(results_dir)
-    if not os.path.exists(grid_file):
-        generate_grids(grid_file, grid_qfforma)
-    model_specs_df = pd.read_csv(grid_file)
+    if generate:
+        generate_grids(grid_dir=results_dir, model_specs=grid_qfforma)
+
+    grid_file_name = results_dir + 'model_grid_qfforma.csv'
+    model_specs_df = pd.read_csv(grid_file_name)
 
     # Parse data
     X_train_df = data['X_train_df']
@@ -59,9 +71,15 @@ def train_qfforma(data, start_id, end_id, results_dir, gpu_id=0):
     y_test_df = data['y_test_df']
 
     os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
+
+    import torch
     from fforma import FFORMA
-    from metrics import WeightedPinballLoss
+    from metrics.pytorch_metrics import WeightedPinballLoss
     from meta_learner import MetaLearnerNN
+    from utils import evaluate_model_prediction
+
+    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda'
 
     # Parse hyper parameter data frame
     for i in range(start_id, end_id):
@@ -88,7 +106,7 @@ def train_qfforma(data, start_id, end_id, results_dir, gpu_id=0):
                         'use_softmax': mc.use_softmax,
                         'loss_function': WeightedPinballLoss(mc.train_percentile),
                         'random_seed': int(mc.random_seed),
-                        'device': mc.device}
+                        'device': device}
 
         # Instantiate, fit, predict and evaluate
         model = FFORMA(meta_learner_params=model_params,
@@ -122,13 +140,24 @@ def train_qfforma(data, start_id, end_id, results_dir, gpu_id=0):
         with open(output_file, "wb") as f:
             pickle.dump(evaluation_dict, f)
 
-def read_data(dataset='Daily'):
+def read_data(dataset='M4'):
+    
+    # Load and parse data
+    data_file = './data/experiment/{}_pickle.p'.format(dataset)
 
-    if dataset == 'all':
-        dataset = None
-    X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_insample_df, y_test_df = prepare_fforma_data('data',
-                                                                                        dataset_name=dataset)
+    file = open(data_file, 'rb')
+    data = pickle.load(file)
 
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df']
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+    # Filter unique_ids with X_train_df unique_ids
     unique_ids = X_train_df['unique_id'].unique()
     preds_train_df = preds_train_df[preds_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
     y_train_df = y_train_df[y_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
@@ -138,6 +167,7 @@ def read_data(dataset='Daily'):
     preds_test_df = preds_test_df[preds_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
     y_test_df = y_test_df[y_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
 
+    # Sort datasets by unique_id, ds
     X_train_df = X_train_df.sort_values(['unique_id']).reset_index(drop=True)
     preds_train_df = preds_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
     y_train_df = y_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
@@ -146,8 +176,6 @@ def read_data(dataset='Daily'):
     X_test_df = X_test_df.sort_values(['unique_id']).reset_index(drop=True)
     preds_test_df = preds_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
     y_test_df = y_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-
-    #y_test_df['ds'] = y_test_df[['unique_id','ds']].groupby('unique_id').cumcount()+1
 
     data = {'X_train_df': X_train_df,
             'preds_train_df': preds_train_df,
@@ -166,17 +194,18 @@ def parse_args():
     parser.add_argument('--dataset', type=str, help='Daily, etc')
     parser.add_argument('--start_id', type=int, help='Start id')
     parser.add_argument('--end_id', type=int, default=0, help='End id')
+    parser.add_argument('--generate_grid', type=int, default=0, help='Generate grid')
     parser.add_argument('--gpu_id', type=int, help='GPU')
     return parser.parse_args()
 
-def main(dataset, start_id, end_id, gpu_id):
+def main(dataset, start_id, end_id, generate_grid, gpu_id):
 
-    results_dir = './results/M4/{}'.format(dataset)
+    results_dir = './results/{}/'.format(dataset)
     print("Reading data...")
     data = read_data(dataset)
 
     print('Training model...')
-    train_qfforma(data, start_id, end_id, results_dir, gpu_id)
+    train_qfforma(data, start_id, end_id, results_dir, generate_grid, gpu_id)
 
 if __name__ == '__main__':
 
@@ -185,8 +214,8 @@ if __name__ == '__main__':
     if args is None:
         exit()
 
-    main(args.dataset, args.start_id, args.end_id, args.gpu_id)
+    main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.gpu_id)
 
-# PYTHONPATH=. python src/experiment.py --dataset 'Daily' --start_id 0 --end_id 1 --gpu_id 1
+# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 0 --end_id 5 --generate_grid 1 --gpu_id 1
 
 

@@ -10,8 +10,8 @@ import pandas as pd
 import numpy as np
 
 from tqdm import tqdm
-from fforma.m4_data import prepare_m4_data, prepare_full_m4_data
-from fforma.utils import wide_to_long
+from src.m4_data import prepare_m4_data, prepare_full_m4_data
+from src.utils import wide_to_long
 
 URL_M4 = 'https://github.com/pmontman/M4metaresults/releases/download/v0.0.0.9000/M4metaresults_0.0.0.9000.tar.gz'
 URL_M3 = 'https://github.com/FedericoGarza/meta-data/releases/download/v0.0.0.9000/m3-meta-data.pickle'
@@ -109,12 +109,12 @@ def prepare_fforma_data_m4(directory, dataset_name=None):
     #Check downloaded data
     maybe_download_decompress_m4(directory)
 
-    #Prepare data from R
-    if not data_already_present_m4(directory, kind='r'):
-        cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
-        res_r = os.system(cmd)
+    # #Prepare data from R
+    # if not data_already_present_m4(directory, kind='r'):
+    #     cmd = f'Rscript ./fforma/R/prepare_data_m4.R "{directory}"'
+    #     res_r = os.system(cmd)
 
-        assert res_r == 0, 'Some error happened with R processing'
+    #     assert res_r == 0, 'Some error happened with R processing'
 
     root_processed_data = directory + '/m4_meta_data/processed_data'
 
@@ -314,13 +314,26 @@ def maybe_download_tourism(directory):
 def prepare_fforma_data(directory, dataset_name=None, kind='M4'):
     """
     """
+
+    data = {}
     if kind == 'M4':
-        return prepare_fforma_data_m4(directory, dataset_name)
+        X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, \
+            y_insample_df, y_test_df = prepare_fforma_data_m4(directory, dataset_name)
+
     else:
-        X_train_df, preds_train_df, _, y_train_df, \
+        X_train_df, preds_train_df, y_insample_train_df, y_train_df, \
             X_test_df, preds_test_df, \
             y_insample_df, y_test_df = prepare_fforma_data_m3_tourism(directory,
                                                                       dataset_name,
                                                                       kind=kind)
+        data.update({'y_insample_train_df': y_insample_train_df})
 
-        return X_train_df, preds_train_df, y_train_df, X_test_df, preds_test_df, y_insample_df, y_test_df
+    data.update({'X_train_df': X_train_df,
+                'preds_train_df': preds_train_df,
+                'y_train_df': y_train_df,
+                'y_insample_df': y_insample_df,
+                'X_test_df': X_test_df,
+                'preds_test_df': preds_test_df,
+                'y_test_df': y_test_df})
+
+    return data
