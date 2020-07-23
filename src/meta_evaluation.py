@@ -7,6 +7,7 @@ import requests
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
 from copy import deepcopy
 from src.utils import long_to_wide, wide_to_long
 from tsfeatures.metrics import evaluate_panel
