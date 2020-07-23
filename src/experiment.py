@@ -123,6 +123,8 @@ def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
                        meta_learner=MetaLearnerNN,
                        random_seed=int(mc.random_seed))
         model.fit(X_train_df, preds_train_df, y_train_df)
+
+        print('Predicting in test...')
         y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
 
         # Infer seasonalities
@@ -133,6 +135,7 @@ def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
         seasonalities = seasonalities.set_index('unique_id')
         seasonalities = seasonalities.to_dict()['seasonality']
 
+        print('Computing owa...')
         model_owa, model_mase, model_smape = evaluate_model_prediction(y_train_df=y_insample_df,
                                                                        outputs_df=y_hat_df,
                                                                        seasonalities=seasonalities)
@@ -148,6 +151,7 @@ def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
 
         # Output evaluation
         uploat_to_s3(mc, evaluation_dict, dataset)
+        print('Uploaded to s3!')
 
 def read_data(dataset='M4'):
 
