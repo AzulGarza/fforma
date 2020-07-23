@@ -20,10 +20,13 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 import time
 
-
 freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
+
+freqs_hyndman = {'H': 24, 'D': 1,
+                 'M': 12, 'Q': 4,
+                 'W':1, 'Y': 1}
 
 FREQ_DICT = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1, 'O': 1}
 
@@ -313,30 +316,26 @@ def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
         res = res.reset_index(drop=True)
     return res
 
-def long_to_wide(long_df):
-    horizontal_df = pd.DataFrame(columns=long_df.columns)
-    cols_to_parse = list(set(long_df.columns)-set(['unique_id']))
-    long_df = long_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    unique_ids = long_df['unique_id'].unique()
-    n_series = len(unique_ids)
-    max_len = long_df.groupby('unique_id')['ds'].count().max()
-
-    dict_df = {'unique_id':unique_ids,
-               'ds':list(range(1, max_len+1))}
-    padding_dict = list(product(*list(dict_df.values())))
-    padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
-    df_padded = padding_dict.merge(long_df, on=['unique_id','ds'], how='outer')
-    df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
-
+def long_to_wide_uid(uid, df, full_columns, cols_to_parse):
+    horizontal_df = pd.DataFrame(columns=full_columns)
     for col in cols_to_parse:
-        values = df_padded[col].values
-        values = values.reshape((n_series, max_len))
-        values = values.tolist()
-        horizontal_df[col] = values
-
-    horizontal_df['unique_id'] = unique_ids
+        horizontal_df[col] = [df[col].values]
+    horizontal_df['unique_id'] = uid
 
     return horizontal_df
+
+def long_to_wide(long_df):
+    cols_to_parse = set(long_df.columns) - {'unique_id'}
+    partial_long_to_wide_uid = partial(long_to_wide_uid,
+                                       full_columns=long_df.columns,
+                                       cols_to_parse=cols_to_parse)
+
+    with mp.Pool() as pool:
+        wide_df = pool.starmap(partial_long_to_wide_uid, long_df.groupby('unique_id'))
+
+    wide_df = pd.concat(wide_df).reset_index(drop=True)
+
+    return wide_df
 
 def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
@@ -361,7 +360,6 @@ def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     evaluation = pd.DataFrame(evaluation, index=[dataset_name])
 
     return evaluation
-
 
 def evaluate_model_prediction(y_train_df, outputs_df, seasonalities):
     """
@@ -423,6 +421,7 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
     model_smape = np.mean(total_smape) * 100
 
     model_owa = ((model_mase/naive2_mase) + (model_smape/naive2_smape))/2
+
     return model_owa, model_mase, model_smape
 
 
@@ -472,10 +471,13 @@ def evaluate_panel(y_panel, y_hat_panel, metric,
             top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
             bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
             y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
-            evaluation_id = metric(y_id, y_hat_id, y_insample_id, seasonality)
+            evaluation_id = delayed(metric)(y_id, y_hat_id, y_insample_id, seasonality)
         else:
-            evaluation_id = metric(y_id, y_hat_id)
+            evaluation_id = delayed(metric)(y_id, y_hat_id)
         evaluation.append(evaluation_id)
+
+    with ProgressBar():
+        evaluation = compute(*evaluation)
     return evaluation
 
 def smape(y, y_hat):
