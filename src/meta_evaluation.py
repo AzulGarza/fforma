@@ -257,16 +257,30 @@ def evaluate_fforma_experiment(file, directory, kind='M4'):
         print('Successfully downloaded', filename, size, 'bytes.')
 
     errors_naive2 = pd.read_pickle(filepath)
+
+    #predictions
     predictions = pd.read_pickle(file)
     predictions = long_to_wide(predictions)
 
+    #Preparing to evaluation
     complete_data = predictions.merge(errors_naive2, how='left', on=['unique_id'])
     errors = calc_errors_wide(complete_data)
     errors = complete_data.merge(errors, how='left', on=['unique_id'])
 
-    for metric in ['mase', 'smape']:
-        errors[f'{metric}_rel'] = errors[f'{metric}_y_hat'] / errors[f'{metric}_y_hat_naive2'] 
+    errors = errors.loc[:, errors.columns.str.contains('mase|smape')]
+    errors = errors.mean().to_dict()
+    errors = pd.DataFrame(errors, index=[0])
 
+    for metric in ['mase', 'smape']:
+        errors[f'{metric}_rel'] = errors[f'{metric}_y_hat'] / errors[f'{metric}_y_hat_naive2']
+
+    errors['owa'] = 0.5 * (errors['mase_rel'] + errors['smape_rel'])
+
+    model_owa, model_mase, model_smape = [errors[col].item() for col in ('owa', 'mase_y_hat', 'smape_y_hat')]
+
+    print("OWA: {:03.3f}".format(model_owa))
+    print("MASE: {:03.3f}".format(model_mase))
+    print("SMAPE: {:03.3f}".format(model_smape))
 
     return errors
 
