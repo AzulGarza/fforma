@@ -73,7 +73,7 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
-    y_train_df = data['y_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
     y_insample_df = data['y_insample_df']
 
     X_test_df = data['X_test_df']
@@ -127,6 +127,8 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         model.fit(X_train_df, preds_train_df, y_train_df)
 
         print('Predicting in test...')
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+         
         y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
 
         y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
