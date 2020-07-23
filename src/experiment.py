@@ -57,7 +57,7 @@ def uploat_to_s3(mc_row, evaluation_dict, dataset):
     data = {**mc_dict, **evaluation_dict}
     data = pd.DataFrame(data, index=[0])
 
-    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{mc.model_id}.p'
+    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{mc_row.model_id}.p'
     pd.to_pickle(data, pickle_file)
 
 
