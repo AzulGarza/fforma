@@ -104,7 +104,7 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         # Check if result already exists
         output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
 
-        lr_scheduler_step_size = max(config.n_epochs // 3, 2)
+        lr_scheduler_step_size = max(mc.n_epochs // 3, 2)
 
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
