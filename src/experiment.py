@@ -51,13 +51,13 @@ def generate_grids(grid_dir, model_specs):
     grid_file_name = grid_dir + 'model_grid_qfforma.csv'
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
 
-def uploat_to_s3(mc_row, evaluation_dict, dataset):
+def uploat_to_s3(model_id, data, dataset):
 
-    mc_dict = mc_row.to_dict()
-    data = {**mc_dict, **evaluation_dict}
-    data = pd.DataFrame(data, index=[0])
+    #mc_dict = mc_row.to_dict()
+    #data = {**mc_dict, **evaluation_dict}
+    #data = pd.DataFrame(data, index=[0])
 
-    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{mc_row.model_id}.p'
+    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{model_id}.p'
     pd.to_pickle(data, pickle_file)
 
 
@@ -127,30 +127,32 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         print('Predicting in test...')
         y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
 
-        # Infer seasonalities
-        seasonalities = y_test_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
-        seasonalities = seasonalities.rename('freq').reset_index()
-        seasonalities['seasonality'] = seasonalities['freq'].replace(DICT_FREQS)
-        assert seasonalities['seasonality'].isnull().sum() == 0
-        seasonalities = seasonalities.set_index('unique_id')
-        seasonalities = seasonalities.to_dict()['seasonality']
+        y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
 
-        print('Computing owa...')
-        model_owa, model_mase, model_smape = evaluate_model_prediction(y_train_df=y_insample_df,
-                                                                       outputs_df=y_hat_df,
-                                                                       seasonalities=seasonalities)
+        # # Infer seasonalities
+        # seasonalities = y_test_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
+        # seasonalities = seasonalities.rename('freq').reset_index()
+        # seasonalities['seasonality'] = seasonalities['freq'].replace(DICT_FREQS)
+        # assert seasonalities['seasonality'].isnull().sum() == 0
+        # seasonalities = seasonalities.set_index('unique_id')
+        # seasonalities = seasonalities.to_dict()['seasonality']
 
-        print("OWA: {:03.3f}".format(model_owa))
-        print("MASE: {:03.3f}".format(model_mase))
-        print("SMAPE: {:03.3f}".format(model_smape))
+        # print('Computing owa...')
+        # model_owa, model_mase, model_smape = evaluate_model_prediction(y_train_df=y_insample_df,
+        #                                                                outputs_df=y_hat_df,
+        #                                                                seasonalities=seasonalities)
 
-        evaluation_dict = {'id': mc.model_id,
-                          'owa': model_owa,
-                          'mase': model_mase,
-                          'smape': model_smape}
+        # print("OWA: {:03.3f}".format(model_owa))
+        # print("MASE: {:03.3f}".format(model_mase))
+        # print("SMAPE: {:03.3f}".format(model_smape))
+
+        # evaluation_dict = {'id': mc.model_id,
+        #                   'owa': model_owa,
+        #                   'mase': model_mase,
+        #                   'smape': model_smape}
 
         # Output evaluation
-        uploat_to_s3(mc, evaluation_dict, dataset)
+        uploat_to_s3(mc.model_id, y_hat_df, dataset)
         print('Uploaded to s3!')
 
 def read_data(dataset='M4'):
