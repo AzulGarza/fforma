@@ -264,6 +264,10 @@ def evaluate_fforma_experiment(file, directory, kind='M4'):
     errors = calc_errors_wide(complete_data)
     errors = complete_data.merge(errors, how='left', on=['unique_id'])
 
+    for metric in ['mase', 'smape']:
+        errors[f'{metric}_rel'] = errors[f'{metric}_y_hat'] / errors[f'{metric}_y_hat_naive2'] 
+
+
     return errors
 
 def get_prediction_panel(y_panel_df, h, freq):
