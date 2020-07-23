@@ -25,11 +25,13 @@ def evaluate(dataset, generate, results_dir):
     errors = []
     size = len(model_specs_df)
     for i, (model_id, df) in enumerate(model_specs_df.groupby('model_id')):
-        print(i / size * 100, '\n')
+
         s3_file = f's3://research-storage-orax/{dataset}/qfforma-{model_id}.p'
 
         try:
             long_preds = pd.read_pickle(s3_file)
+            print(i / size * 100, '\n')
+            print('File found!', 'preparing to evaluate')
         except:
             print('File not found')
             continue
