@@ -279,7 +279,7 @@ def evaluate_fforma_experiment(long_preds, directory, kind='M4'):
 
     print("OWA: {:03.3f}".format(model_owa))
     print("MASE: {:03.3f}".format(model_mase))
-    print("SMAPE: {:03.3f}".format(model_smape))
+    print("SMAPE: {:03.3f}".format(100 * model_smape))
 
     return errors
 
