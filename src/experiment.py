@@ -14,14 +14,14 @@ DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 grid_qfforma = {'model_type': ['qfforma'],
                 'n_epochs' : [5, 20, 50],
-                'lr': [1e-4, 1e-3, 1e-2],
-                'batch_size': [128],
+                'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4, 1e-3, 5e-3, 7e-3, 1e-2, 5e-2],
+                'batch_size': [64, 128],
                 'gradient_eps': [1e-8],
                 'weight_decay': [0],
-                'lr_scheduler_step_size': [5],
-                'lr_decay': [0.4],
-                'dropout': [0.1],
-                'layers': [[200, 100, 50, 25, 10]],
+                #'lr_scheduler_step_size': [10],
+                'lr_decay': [0.5, 1],
+                'dropout': [0, 0.3],
+                'layers': [[100], [100, 50], [200, 100, 50, 25, 10]],
                 'use_softmax': [False, True],
                 'train_percentile': [0.4, 0.5, 0.6],
                 'random_seed': [1]}
@@ -104,12 +104,14 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         # Check if result already exists
         output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
 
+        lr_scheduler_step_size = max(config.n_epochs // 3, 2)
+
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
                         'batch_size': int(mc.batch_size),
                         'gradient_eps': mc.gradient_eps,
                         'weight_decay': mc.weight_decay,
-                        'lr_scheduler_step_size': int(mc.lr_scheduler_step_size),
+                        'lr_scheduler_step_size': int(lr_scheduler_step_size),
                         'lr_decay': mc.lr_decay,
                         'dropout': mc.dropout,
                         'layers': ast.literal_eval(mc.layers),
