@@ -61,7 +61,7 @@ def uploat_to_s3(mc_row, evaluation_dict, dataset):
     pd.to_pickle(data, pickle_file)
 
 
-def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
+def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id=0):
 
     # Read/Generate hyperparameter grid
     if generate:
@@ -102,7 +102,7 @@ def train_qfforma(data, start_id, end_id, dataset, generate, gpu_id=0):
         print(47*'=' + '\n')
 
         # Check if result already exists
-        #output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
+        output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
 
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
@@ -213,12 +213,12 @@ def parse_args():
 
 def main(dataset, start_id, end_id, generate_grid, gpu_id):
 
-    #results_dir = './results/{}/'.format(dataset)
+    results_dir = './results/{}/'.format(dataset)
     print("Reading data...")
     data = read_data(dataset)
 
     print('Training model...')
-    train_qfforma(data, start_id, end_id, dataset, generate_grid, gpu_id)
+    train_qfforma(data, start_id, end_id, dataset, generate_grid, results_dir, gpu_id)
 
 if __name__ == '__main__':
 
