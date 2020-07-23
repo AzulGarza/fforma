@@ -33,7 +33,6 @@ def evaluate(dataset, generate, results_dir):
             print(i / size * 100, '\n')
             print('File found!', 'preparing to evaluate')
         except:
-            print('File not found')
             continue
 
         error = evaluate_fforma_experiment(long_preds, results_dir, dataset)
