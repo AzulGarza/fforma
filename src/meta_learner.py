@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 import multiprocessing as mp
+import xgboost as xgb
 
 from copy import deepcopy
 from tqdm import tqdm
@@ -62,10 +63,16 @@ class MetaLearner(object):
         if threads is None:
             threads = mp.cpu_count()
 
+        #init_params = {
+        #    'objective': 'multiclass',
+        #    'nthread': threads,
+        #    'seed': random_seed
+        #}
         init_params = {
-            'objective': 'multiclass',
+            'objective': 'multi:softprob',
             'nthread': threads,
-            'seed': random_seed
+            'seed': random_seed,
+            'disable_default_eval_metric': 1
         }
 
         self.params = {**params, **init_params}
@@ -78,16 +85,17 @@ class MetaLearner(object):
         y = dtrain.get_label().astype(int)
         n_train = len(y)
         preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        preds_transformed = softmax(preds, axis=1)
+                          self.contribution_to_error[y, :].shape)#,
+                          #order='F')
+        #preds_transformed = softmax(preds, axis=1)
+        preds_transformed = preds
 
         weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1).reshape((n_train, 1))
 
         grad = preds_transformed * (self.contribution_to_error[y, :] - weighted_avg_loss_func)
         hess = self.contribution_to_error[y,:] * preds_transformed * (1.0 - preds_transformed) - grad * preds_transformed
         #hess = grad*(1 - 2*preds_transformed)
-        return grad.flatten('F'), hess.flatten('F')
+        return grad.flatten(), hess.flatten() #grad.flatten('F'), hess.flatten('F')
 
     def feval(self, predt, dtrain):
         """
@@ -95,15 +103,16 @@ class MetaLearner(object):
         y = dtrain.get_label().astype(int)
         n_train = len(y)
         preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        preds_transformed = softmax(preds, axis=1)
+                          self.contribution_to_error[y, :].shape)#,
+                          #order='F')
+        #preds_transformed = softmax(preds, axis=1)
+        preds_transformed = preds
         weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1)
         fforma_loss = weighted_avg_loss_func.mean()
 
-        return 'FFORMA-loss', fforma_loss, False
+        return 'FFORMA-loss', fforma_loss#, False
 
-    def fit(self, X_train_df, preds_train_df, y_train_df, y_insample_df, verbose=True):
+    def fit(self, X_train_df, preds_train_df, y_train_df, y_insample_df, verbose=True, errors=None):
         """Fits FFORMA.
 
 
@@ -127,11 +136,14 @@ class MetaLearner(object):
         features = X_train_df.set_index('unique_id').values
 
         print('Calculating errors...')
-        errors = calc_errors_widing(preds_df=preds_train_df,
-                                    y_panel_df=y_train_df,
-                                    y_insample_df=y_insample_df,
-                                    seasonality=self.df_seasonality,
-                                    benchmark_model=self.benchmark_model)
+        if errors is None:
+            errors = calc_errors_widing(preds_df=preds_train_df,
+                                        y_panel_df=y_train_df,
+                                        y_insample_df=y_insample_df,
+                                        seasonality=self.df_seasonality,
+                                        benchmark_model=self.benchmark_model)
+        else:
+            errors = errors.set_index('unique_id')
 
         best_models_count = errors.idxmin(axis=1).value_counts()
         best_models_count = pd.Series(best_models_count, index=errors.columns)
@@ -162,17 +174,23 @@ class MetaLearner(object):
 
         params['num_class'] = len(np.unique(best_models))
 
-        dtrain = lgb.Dataset(data=feats_train, label=indices_train)
-        dvalid = lgb.Dataset(data=feats_val, label=indices_val)
-        valid_sets = [dtrain, dvalid]
+        #dtrain = lgb.Dataset(data=feats_train, label=indices_train)
+        #dvalid = lgb.Dataset(data=feats_val, label=indices_val)
+        dtrain = xgb.DMatrix(data=feats_train, label=indices_train)
+        dvalid = xgb.DMatrix(data=feats_val, label=indices_val)
+        #valid_sets = [dtrain, dvalid]
+        valid_sets = [(dtrain, 'train'), (dvalid, 'valid')]
 
-        self.gbm_model_ = lgb.train(
+        self.gbm_model_ = xgb.train(
             params=params,
-            train_set=dtrain,
-            fobj=self.fobj,
+            #train_set=dtrain,
+            dtrain=dtrain,
+            #fobj=self.fobj,
+            obj=self.fobj,
             num_boost_round=num_round,
             feval=self.feval,
-            valid_sets=valid_sets,
+            #valid_sets=valid_sets,
+            evals=valid_sets,
             early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=verbose
         )
@@ -209,8 +227,8 @@ class MetaLearner(object):
                                                              val_df=X_df)
         features = X_df.set_index('unique_id')
 
-        scores = self.gbm_model_.predict(features.values, raw_score=True)
-        weights = softmax(scores / tmp, axis=1)
+        scores = self.gbm_model_.predict(xgb.DMatrix(features.values))#, raw_score=True)
+        weights = scores #softmax(scores / tmp, axis=1)
 
         base_model_preds = base_model_preds.set_index(['unique_id', 'ds'])
 
