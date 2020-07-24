@@ -13,6 +13,7 @@ pip install git+https://github.com/FedericoGarza/fforma
 # Usage
 
 See `comparison-fforma-r.ipynb` for an example using the original data.
+PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1
 
 # Current Results
 
