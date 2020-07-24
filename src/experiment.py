@@ -156,7 +156,7 @@ def train_qfforma(data, start_id, end_id, dataset,
         # print("MASE: {:03.3f}".format(model_mase))
         # print("SMAPE: {:03.3f}".format(model_smape))
 
-        evaluation_dict = {'id': mc.model_id,
+        evaluation_dict = {'model_id': mc.model_id,
                           'train_loss': model.meta_learner.train_loss,
                           'train_min_smape': model.meta_learner.train_min_smape,
                           'train_min_epoch': model.meta_learner.train_min_epoch,
@@ -167,7 +167,10 @@ def train_qfforma(data, start_id, end_id, dataset,
 
         # Output evaluation
         if upload:
-            upload_to_s3(mc.model_id, y_hat_df, df_results, dataset)
+            mc_df = pd.DataFrame(mc.to_dict(), index=[0])
+            mc_df = mc_df.merge(df_results, how='left', on=['model_id'])
+
+            upload_to_s3(mc.model_id, y_hat_df, mc_df, dataset)
             print('Uploaded to s3!')
 
 def read_data(dataset='M4'):
