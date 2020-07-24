@@ -22,7 +22,7 @@ def upload_evaluation_to_s3(model_id, data, dataset):
     pickle_file = f's3://research-storage-orax/{dataset}/evaluation/qfforma-evaluation-{model_id}.p'
     pd.to_pickle(data, pickle_file)
 
-def evaluate(dataset, start_id, end_id, generate, results_dir):
+def evaluate(dataset, start_id, end_id, generate, results_dir, upload):
 
     # Read/Generate hyperparameter grid
     if generate:
@@ -49,8 +49,10 @@ def evaluate(dataset, start_id, end_id, generate, results_dir):
         error['model_id'] = model_id
 
         error = mc.merge(error, how='left', on=['model_id'])
+        print(error)
 
-        upload_evaluation_to_s3(model_id, error, dataset)
+        if upload:
+            upload_evaluation_to_s3(model_id, error, dataset)
 
 def parse_args():
     desc = "evaluate Experiment QFFORMA"
@@ -60,15 +62,16 @@ def parse_args():
     parser.add_argument('--generate_grid', type=int, default=0, help='Generate grid')
     parser.add_argument('--start_id', type=int, help='Start id')
     parser.add_argument('--end_id', type=int, default=0, help='End id')
+    parser.add_argument('--upload', type=int, default=1, help='Upload to S3')
 
     return parser.parse_args()
 
-def main(dataset, start_id, end_id, generate_grid):
+def main(dataset, start_id, end_id, generate_grid, upload):
 
     results_dir = './results/{}/'.format(dataset)
 
     print('Evaluating models...')
-    evaluate(dataset, start_id, end_id, generate_grid, results_dir)
+    evaluate(dataset, start_id, end_id, generate_grid, results_dir, upload)
 
 if __name__ == '__main__':
 
@@ -77,6 +80,6 @@ if __name__ == '__main__':
     if args is None:
         exit()
 
-    main(args.dataset, args.start_id, args.end_id, args.generate_grid)
+    main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.upload)
 
-# PYTHONPATH=. python -m src.evaluate_experiment --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 1
+# PYTHONPATH=. python -m src.evaluate_experiment --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 1 --upload 1
