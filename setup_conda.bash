@@ -28,6 +28,9 @@ pip install ESRNN==0.1.2
 conda install -c anaconda patsy==0.5.1
 pip install --user rstl
 pip install threadpoolctl # este porque?
+pip install seaborn
+pip install xgboost
+pip install s3fs
 conda install dask
 #conda install -c conda-forge pathos
 
