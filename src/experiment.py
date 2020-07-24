@@ -1,4 +1,5 @@
 import os
+import glob
 import yaml
 import argparse
 import itertools
@@ -8,7 +9,6 @@ import time
 
 import numpy as np
 import pandas as pd
-import glob
 
 #############################################################################
 # EXPERIMENT SPECS
@@ -34,6 +34,7 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'layers': [[100], [100, 50], [200, 100, 50, 25, 10]],
                  'use_softmax': [False, True],
                  'train_percentile': [0.4, 0.5, 0.6],
+                 'display_step': [5],
                  'random_seed': [1]}
 
 ALL_MODEL_SPECS  = {'qra': GRID_QRA1,
@@ -144,7 +145,7 @@ def upload_to_s3(model_id, predictions, evaluation, dataset):
 # TRAIN CODE
 #############################################################################
 
-def train_qra(data, args):
+def train_qra(data, grid_dir, model_specs_df, args):
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -155,7 +156,7 @@ def train_qra(data, args):
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
 
-def train_fqra(data, args):
+def train_fqra(data, grid_dir, model_specs_df, args):
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -166,7 +167,7 @@ def train_fqra(data, args):
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
 
-def train_fforma(data, args):
+def train_fforma(data, grid_dir, model_specs_df, args):
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -221,9 +222,10 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
                         'lr_scheduler_step_size': int(lr_scheduler_step_size),
                         'lr_decay': mc.lr_decay,
                         'dropout': mc.dropout,
-                        'layers': ast.literal_eval(mc.layers),
+                        'layers': mc.layers,
                         'use_softmax': mc.use_softmax,
                         'loss_function': WeightedPinballLoss(mc.train_percentile),
+                        'display_step': int(mc.display_step),
                         'random_seed': int(mc.random_seed),
                         'device': device}
 
@@ -260,10 +262,8 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
 
         evaluation_dict = {'model_id': mc.model_id,
                           'train_loss': model.meta_learner.train_loss,
-                          'train_min_smape': model.meta_learner.train_min_smape,
-                          'train_min_epoch': model.meta_learner.train_min_epoch,
                           'test_min_smape': model.meta_learner.test_min_smape,
-                          'test_min_epoch': model.meta_learner.test_min_epoch}
+                          'test_min_mape': model.meta_learner.test_min_mape}
 
         df_results = pd.DataFrame(evaluation_dict, index=[0])
 
@@ -316,5 +316,3 @@ if __name__ == '__main__':
 
     assert args.model in ['qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
     train(args)
-
-# PYTHONPATH=. python src/experiment.py --model qfforma --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1
