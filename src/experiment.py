@@ -58,7 +58,7 @@ def generate_grid(args):
     # Read grid if not generate
     if not args.generate_grid:
         model_specs_df = pd.read_csv(grid_file_name)
-        return model_specs_df
+        return model_specs_df, grid_dir
 
     # Generate grid
     model_specs = ALL_MODEL_SPECS[args.model]
@@ -78,7 +78,7 @@ def generate_grid(args):
     model_specs_df = model_specs_df.sample(frac=1).reset_index(drop=True)
 
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
-    return model_specs_df
+    return model_specs_df, grid_dir
 
 def read_data(dataset='M4'):
 
@@ -177,7 +177,7 @@ def train_fforma(data, args):
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
 
-def train_qfforma(data, model_specs_df, args):
+def train_qfforma(data, grid_dir, model_specs_df, args):
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -199,7 +199,7 @@ def train_qfforma(data, model_specs_df, args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Parse hyper parameter data frame
-    for i in range(start_id, end_id):
+    for i in range(args.start_id, args.end_id):
 
         mc = model_specs_df.loc[i, :]
 
@@ -209,7 +209,7 @@ def train_qfforma(data, model_specs_df, args):
         print(47*'=' + '\n')
 
         # Check if result already exists
-        output_file = '{}/model_{}.p'.format(results_dir, mc.model_id)
+        output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
         lr_scheduler_step_size = max(mc.n_epochs // 3, 2)
 
@@ -268,7 +268,7 @@ def train_qfforma(data, model_specs_df, args):
         df_results = pd.DataFrame(evaluation_dict, index=[0])
 
         # Output evaluation
-        if upload:
+        if args.upload:
             mc_df = pd.DataFrame(mc.to_dict(), index=[0])
             mc_df = mc_df.merge(df_results, how='left', on=['model_id'])
 
@@ -285,10 +285,10 @@ def train(args):
     data = read_data(args.dataset)
 
     # Read/Generate hyperparameter grid
-    model_specs_df = generate_grid(args)
+    model_specs_df, grid_dir = generate_grid(args)
 
     # Train
-    train_model[args.model](data, model_specs_df, args)
+    train_model[args.model](data, grid_dir, model_specs_df, args)
 
 #############################################################################
 # MAIN
