@@ -51,17 +51,22 @@ def generate_grids(grid_dir, model_specs):
     grid_file_name = grid_dir + 'model_grid_qfforma.csv'
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
 
-def uploat_to_s3(model_id, data, dataset):
+def upload_to_s3(model_id, predictions, evaluation, dataset):
 
     #mc_dict = mc_row.to_dict()
     #data = {**mc_dict, **evaluation_dict}
     #data = pd.DataFrame(data, index=[0])
 
-    pickle_file = f's3://research-storage-orax/{dataset}/qfforma-{model_id}.p'
-    pd.to_pickle(data, pickle_file)
+    pickle_preds = f's3://research-storage-orax/{dataset}/qfforma-{model_id}.p'
+    pickle_eval = f's3://research-storage-orax/{dataset}/evaluation-training/qfforma-{model_id}.p'
+
+    pd.to_pickle(predictions, pickle_preds)
+    pd.to_pickle(evaluation, pickle_eval)
 
 
-def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id=0):
+def train_qfforma(data, start_id, end_id, dataset,
+                  generate, results_dir, gpu_id=0,
+                  upload=False):
 
     # Read/Generate hyperparameter grid
     if generate:
@@ -88,8 +93,8 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
     from meta_learner import MetaLearnerNN
     from utils import evaluate_model_prediction
 
-    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cuda'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #device = 'cuda'
 
     # Parse hyper parameter data frame
     for i in range(start_id, end_id):
@@ -124,11 +129,12 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         model = FFORMA(meta_learner_params=model_params,
                        meta_learner=MetaLearnerNN,
                        random_seed=int(mc.random_seed))
-        model.fit(X_train_df, preds_train_df, y_train_df)
+        model.fit(X_train_df, preds_train_df, y_train_df,
+                  X_test_df, preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
 
         print('Predicting in test...')
         assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
-         
+
         y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
 
         y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
@@ -150,14 +156,19 @@ def train_qfforma(data, start_id, end_id, dataset, generate, results_dir, gpu_id
         # print("MASE: {:03.3f}".format(model_mase))
         # print("SMAPE: {:03.3f}".format(model_smape))
 
-        # evaluation_dict = {'id': mc.model_id,
-        #                   'owa': model_owa,
-        #                   'mase': model_mase,
-        #                   'smape': model_smape}
+        evaluation_dict = {'id': mc.model_id,
+                          'train_loss': model.meta_learner.train_loss,
+                          'train_min_smape': model.meta_learner.train_min_smape,
+                          'train_min_epoch': model.meta_learner.train_min_epoch,
+                          'test_min_smape': model.meta_learner.test_min_smape,
+                          'test_min_epoch': model.meta_learner.test_min_epoch}
+
+        df_results = pd.DataFrame(evaluation_dict, index=[0])
 
         # Output evaluation
-        uploat_to_s3(mc.model_id, y_hat_df, dataset)
-        print('Uploaded to s3!')
+        if upload:
+            upload_to_s3(mc.model_id, y_hat_df, df_results, dataset)
+            print('Uploaded to s3!')
 
 def read_data(dataset='M4'):
 
@@ -215,16 +226,18 @@ def parse_args():
     parser.add_argument('--end_id', type=int, default=0, help='End id')
     parser.add_argument('--generate_grid', type=int, default=0, help='Generate grid')
     parser.add_argument('--gpu_id', type=int, help='GPU')
+    parser.add_argument('--upload', type=int, default=1, help='Upload to S3')
     return parser.parse_args()
 
-def main(dataset, start_id, end_id, generate_grid, gpu_id):
+def main(dataset, start_id, end_id, generate_grid, gpu_id, upload):
 
     results_dir = './results/{}/'.format(dataset)
     print("Reading data...")
     data = read_data(dataset)
 
     print('Training model...')
-    train_qfforma(data, start_id, end_id, dataset, generate_grid, results_dir, gpu_id)
+    train_qfforma(data, start_id, end_id, dataset, generate_grid,
+                  results_dir, gpu_id, upload)
 
 if __name__ == '__main__':
 
@@ -233,6 +246,7 @@ if __name__ == '__main__':
     if args is None:
         exit()
 
-    main(args.dataset, args.start_id, args.end_id, args.generate_grid, args.gpu_id)
+    main(args.dataset, args.start_id, args.end_id,
+         args.generate_grid, args.gpu_id, args.upload)
 
-# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3
+# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1

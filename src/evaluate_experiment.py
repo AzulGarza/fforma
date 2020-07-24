@@ -13,7 +13,7 @@ import glob
 from src.experiment import DICT_FREQS, grid_qfforma, generate_grids
 from src.meta_evaluation import evaluate_fforma_experiment
 
-def uploat_evaluation_to_s3(model_id, data, dataset):
+def upload_evaluation_to_s3(model_id, data, dataset):
 
     #mc_dict = mc_row.to_dict()
     #data = {**mc_dict, **evaluation_dict}
@@ -50,7 +50,7 @@ def evaluate(dataset, start_id, end_id, generate, results_dir):
 
         error = mc.merge(error, how='left', on=['model_id'])
 
-        uploat_evaluation_to_s3(model_id, error, dataset)
+        upload_evaluation_to_s3(model_id, error, dataset)
 
 def parse_args():
     desc = "evaluate Experiment QFFORMA"

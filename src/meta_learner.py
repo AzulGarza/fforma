@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from src.meta_evaluation import calc_errors_widing
-from src.metrics.pytorch_metrics import SMAPE1Loss
+from src.metrics.pytorch_metrics import SMAPE2Loss
 
 class MetaLearner(object):
     """Feature-based Forecast Model Averaging (FFORMA).
@@ -344,20 +344,23 @@ class MetaLearnerNN(object):
     def evaluate_accuracy(self, dataloader):
         self.model.eval()
         with torch.no_grad():
-            epoch_losses = []
+            losses = []
             for batch in dataloader:
-                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
+                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, batch)
 
                 batch_y_hat = self.model(batch_x, batch_preds)
-                loss = SMAPE1Loss()(batch_y, batch_y_hat)
 
-                epoch_losses.append(loss.cpu().data.numpy())
+                loss = SMAPE2Loss()(batch_y, batch_y_hat)
 
-        accuracy = np.mean(epoch_losses)
+                losses.append(loss.cpu().data.numpy())
+
+        accuracy = np.mean(losses)
 
         return accuracy
 
-    def fit(self, X_df, preds_df, y_df, verbose=True):
+    def fit(self, X_df, preds_df, y_df,
+            X_df_test=None,  preds_df_test=None, y_df_test=None,
+            verbose=True):
         """
         Parameters
         ----------
@@ -378,6 +381,14 @@ class MetaLearnerNN(object):
         self.max_horizon = max_horizon
         self.n_models = n_models
 
+        #preprocessing test set
+        if X_df_test is not None:
+            preds_df_test = preds_df_test.merge(y_df_test, on=['unique_id','ds'], how='outer')
+            padded_df_test, horizons_test = self.pad_long_df(preds_df_test)
+
+            X_test, y_test, preds_test, horizons_test, *_ = self.prepare_datasets_for_model(X_df_test, padded_df_test, horizons_test)
+
+        #SETTING model
         loss = self.params['loss_function']
 
         self.model = NeuralNetwork(num_numerical_cols=X.size()[1],
@@ -399,6 +410,16 @@ class MetaLearnerNN(object):
 
         train_data = torch.utils.data.TensorDataset(X, y, preds, horizons)
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=self.params['batch_size'])
+
+        if X_df_test is not None:
+            test_data = torch.utils.data.TensorDataset(X_test, y_test, preds_test, horizons_test)
+            test_loader = torch.utils.data.DataLoader(test_data, batch_size=len(test_data))
+
+        self.train_min_smape = 100.0
+        self.test_min_smape = 100.0
+        self.train_min_epoch = 0
+        self.test_min_epoch = 0
+        self.train_loss = 1_000.0
 
         for epoch in range(self.params['n_epochs']):
             self.model.train()
@@ -426,13 +447,29 @@ class MetaLearnerNN(object):
             lr_scheduler.step()
 
             self.train_loss = np.mean(epoch_losses)
-            self.smape = self.evaluate_accuracy(train_loader)
+
+            train_smape = self.evaluate_accuracy(train_loader)
+
+            if train_smape < self.train_min_smape:
+                self.train_min_smape = train_smape
+                self.train_min_epoch = epoch
+
+            if X_df_test is not None:
+                test_smape = self.evaluate_accuracy(test_loader)
+
+                if test_smape < self.test_min_smape:
+                    self.test_min_smape = test_smape
+                    self.test_min_epoch = epoch
+
+            else:
+                test_smape = np.nan
 
             if verbose:
                 print("Epoch:", '%d,' % (epoch + 1),
                       "Time: {:03.3f},".format(time.time()-start),
-                      "Loss: {:.4f}".format(self.train_loss),
-                      "SMAPE: {:.4f}".format(self.smape))
+                      "Loss: {:.4f},".format(self.train_loss),
+                      "SMAPE (TRAIN): {:.4f},".format(train_smape),
+                      "SMAPE (TEST): {:.4f}".format(test_smape))
 
         return self
 

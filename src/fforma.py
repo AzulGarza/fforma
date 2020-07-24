@@ -64,10 +64,6 @@ class FFORMA(object):
         """Fits base models using MetaModels class."""
         pass
 
-    def _compute_base_models_errors(self, predictions, insample):
-        """Calculates validation errrors."""
-        pass
-
     def _compute_features(self, df):
         """Wrapper of tsfeatures."""
         pass
@@ -76,16 +72,20 @@ class FFORMA(object):
         """Calculates errors and features if needed."""
         pass
 
-    def fit(self, X_train_df, preds_train_df, y_train_df, verbose=True):
+    def fit(self, X_train_df, preds_train_df, y_train_df,
+            X_test_df=None, preds_test_df=None, y_test_df=None,
+            verbose=True):
         """
         Fit
         """
         self.meta_learner = self.meta_learner(self.meta_learner_params)
-        self.meta_learner.fit(X_train_df, preds_train_df, y_train_df, verbose=verbose)
+        self.meta_learner.fit(X_train_df, preds_train_df, y_train_df,
+                              X_test_df, preds_test_df, y_test_df,
+                              verbose=verbose)
         self._fitted = True
 
         return self
-        
+
 
     def predict(self, X_test_df, preds_test_df, y_df):
         """
