@@ -136,7 +136,6 @@ class SMAPE2Loss(nn.Module):
 
         return smape
 
-
 class MASELoss(nn.Module):
     """ Calculates the M4 Mean Absolute Scaled Error.
 
@@ -242,8 +241,39 @@ class WeightedPinballLoss(nn.Module):
         pinball = t.sum(pinball, dim=1)
         pinball = t.mul(pinball, weights)
         pinball = t.mean(pinball)
-        
         return pinball
+
+class WeightedMAPELoss(nn.Module):
+    """MAPE Loss
+    """
+    def __init__(self):
+        super(WeightedMAPELoss, self).__init__()
+
+    def forward(self, y, y_hat, weights):
+        delta_y = t.abs((y - y_hat))
+        mape = divide_no_nan(delta_y, y)
+        mape = t.sum(mape, dim=1)
+        mape = t.mul(mape, weights)
+        mape = 100 * t.mean(mape)
+
+        return mape
+
+class WeightedSMAPE2Loss(nn.Module):
+    def __init__(self):
+        super(WeightedSMAPE2Loss, self).__init__()
+
+    def forward(self, y, y_hat, weights):
+        delta_y = t.abs((y - y_hat))
+        scale = t.abs(y) + t.abs(y_hat)
+
+        smape = divide_no_nan(delta_y, scale)
+        smape = t.sum(smape, dim=1)
+        smape = t.mul(weights, smape)
+
+        smape = 200 * t.mean(smape)
+
+        return smape
+
 
 ######################################################################
 # PANEL EVALUATION

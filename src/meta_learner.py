@@ -4,6 +4,7 @@
 import time
 import torch
 import itertools
+import torch as t
 import torch.nn as nn
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from src.meta_evaluation import calc_errors_widing
-from src.metrics.pytorch_metrics import SMAPE2Loss
+from src.metrics.pytorch_metrics import WeightedSMAPE2Loss
 
 class MetaLearner(object):
     """Feature-based Forecast Model Averaging (FFORMA).
@@ -341,16 +342,19 @@ class MetaLearnerNN(object):
 
         return X, y, preds, horizons, max_horizon, n_models
 
-    def evaluate_accuracy(self, dataloader):
+    def evaluate_performance(self, dataloader):
         self.model.eval()
         with torch.no_grad():
             losses = []
             for batch in dataloader:
                 batch_x, batch_y, batch_preds, batch_h = map(self.to_device, batch)
 
+                batch_weights = 1 / batch_h
+                batch_weights = batch_weights.flatten()
+
                 batch_y_hat = self.model(batch_x, batch_preds)
 
-                loss = SMAPE2Loss()(batch_y, batch_y_hat)
+                loss = WeightedSMAPE2Loss()(batch_y, batch_y_hat, batch_weights)
 
                 losses.append(loss.cpu().data.numpy())
 
@@ -359,7 +363,7 @@ class MetaLearnerNN(object):
         return accuracy
 
     def fit(self, X_df, preds_df, y_df,
-            X_df_test=None,  preds_df_test=None, y_df_test=None,
+            X_df_test=None, preds_df_test=None, y_df_test=None,
             verbose=True):
         """
         Parameters
@@ -434,6 +438,7 @@ class MetaLearnerNN(object):
                 # batch_h = batch_h.to(self.params['device'])
 
                 batch_weights = 1/batch_h
+                batch_weights = batch_weights.flatten()
 
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
@@ -448,14 +453,14 @@ class MetaLearnerNN(object):
 
             self.train_loss = np.mean(epoch_losses)
 
-            train_smape = self.evaluate_accuracy(train_loader)
+            train_smape = self.evaluate_performance(train_loader)
 
             if train_smape < self.train_min_smape:
                 self.train_min_smape = train_smape
                 self.train_min_epoch = epoch
 
             if X_df_test is not None:
-                test_smape = self.evaluate_accuracy(test_loader)
+                test_smape = self.evaluate_performance(test_loader)
 
                 if test_smape < self.test_min_smape:
                     self.test_min_smape = test_smape
