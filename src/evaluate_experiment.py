@@ -31,7 +31,7 @@ def evaluate(dataset, start_id, end_id, generate, results_dir):
     grid_file_name = results_dir + 'model_grid_qfforma.csv'
     model_specs_df = pd.read_csv(grid_file_name)
 
-    size = len(model_specs_df)
+    size = end_id - start_id
     for idx, i in enumerate(range(start_id, end_id)):
         mc = model_specs_df.loc[[i], :]
         model_id = mc['model_id'].item()
