@@ -341,6 +341,22 @@ class MetaLearnerNN(object):
 
         return X, y, preds, horizons, max_horizon, n_models
 
+    def evaluate_accuracy(self, dataloader):
+        self.model.eval()
+        with torch.no_grad():
+            epoch_losses = []
+            for batch in dataloader:
+                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
+
+                batch_y_hat = self.model(batch_x, batch_preds)
+                loss = SMAPE1Loss()(batch_y, batch_y_hat)
+
+                epoch_losses.append(loss.cpu().data.numpy())
+
+        accuracy = np.mean(epoch_losses)
+
+        return accuracy
+
     def fit(self, X_df, preds_df, y_df, verbose=True):
         """
         Parameters
@@ -410,11 +426,13 @@ class MetaLearnerNN(object):
             lr_scheduler.step()
 
             self.train_loss = np.mean(epoch_losses)
+            self.smape = self.evaluate_accuracy(train_loader)
 
             if verbose:
                 print("Epoch:", '%d,' % (epoch + 1),
                       "Time: {:03.3f},".format(time.time()-start),
-                      "Loss: {:.4f}".format(self.train_loss))
+                      "Loss: {:.4f}".format(self.train_loss),
+                      "SMAPE: {:.4f}".format(self.smape))
 
         return self
 
