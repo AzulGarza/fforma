@@ -209,6 +209,7 @@ def read_data(dataset='M4'):
     X_test_df = X_test_df.sort_values(['unique_id']).reset_index(drop=True)
     preds_test_df = preds_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
     y_test_df = y_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    y_test_df['ds'] = y_test_df.groupby('unique_id')['ds'].transform(lambda x: 1 + np.arange(len(x)))
 
     data = {'X_train_df': X_train_df,
             'preds_train_df': preds_train_df,
