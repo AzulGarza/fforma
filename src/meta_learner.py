@@ -21,9 +21,13 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from src.meta_evaluation import calc_errors_widing
-from src.metrics.pytorch_metrics import WeightedSMAPE2Loss
+from src.metrics.pytorch_metrics import WeightedSMAPE2Loss, WeightedMAPELoss
 
-class MetaLearner(object):
+##############################################################################
+# FFORMA
+##############################################################################
+
+class MetaLearnerXGBoost(object):
     """Feature-based Forecast Model Averaging (FFORMA).
 
 
@@ -244,9 +248,13 @@ class MetaLearner(object):
         y_hat_df = y_hat_df.reset_index()
 
         return y_hat_df
+
 ##############################################################################
-################### CUSTOM
+# QFFORMA
 ##############################################################################
+
+LOSS_DICT = {'smape': WeightedSMAPE2Loss(),
+             'mape': WeightedMAPELoss()}
 
 class NeuralNetwork(nn.Module):
 
@@ -342,25 +350,19 @@ class MetaLearnerNN(object):
 
         return X, y, preds, horizons, max_horizon, n_models
 
-    def evaluate_performance(self, dataloader):
+    def evaluate_performance(self, dataloader, metric):
         self.model.eval()
         with torch.no_grad():
             losses = []
             for batch in dataloader:
                 batch_x, batch_y, batch_preds, batch_h = map(self.to_device, batch)
-
                 batch_weights = 1 / batch_h
                 batch_weights = batch_weights.flatten()
-
                 batch_y_hat = self.model(batch_x, batch_preds)
-
-                loss = WeightedSMAPE2Loss()(batch_y, batch_y_hat, batch_weights)
-
+                loss = LOSS_DICT[metric](batch_y, batch_y_hat, batch_weights)
                 losses.append(loss.cpu().data.numpy())
-
-        accuracy = np.mean(losses)
-
-        return accuracy
+        avg_loss = np.mean(losses)
+        return avg_loss
 
     def fit(self, X_df, preds_df, y_df,
             X_df_test=None, preds_df_test=None, y_df_test=None,
@@ -419,23 +421,14 @@ class MetaLearnerNN(object):
             test_data = torch.utils.data.TensorDataset(X_test, y_test, preds_test, horizons_test)
             test_loader = torch.utils.data.DataLoader(test_data, batch_size=len(test_data))
 
-        self.train_min_smape = 100.0
         self.test_min_smape = 100.0
-        self.train_min_epoch = 0
-        self.test_min_epoch = 0
-        self.train_loss = 1_000.0
-
+        self.test_min_mape = 100.0
         for epoch in range(self.params['n_epochs']):
             self.model.train()
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
                 batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
-
-                # batch_x = batch_x.to(self.params['device'])
-                # batch_y = batch_y.to(self.params['device'])
-                # batch_preds = batch_preds.to(self.params['device'])
-                # batch_h = batch_h.to(self.params['device'])
 
                 batch_weights = 1/batch_h
                 batch_weights = batch_weights.flatten()
@@ -450,31 +443,23 @@ class MetaLearnerNN(object):
 
             # Decay learning rate
             lr_scheduler.step()
-
             self.train_loss = np.mean(epoch_losses)
 
-            train_smape = self.evaluate_performance(train_loader)
+            if verbose and (epoch % self.params['display_step'] == 0):
+                test_mape = self.evaluate_performance(test_loader, 'mape')
+                test_smape = self.evaluate_performance(test_loader, 'smape')
 
-            if train_smape < self.train_min_smape:
-                self.train_min_smape = train_smape
-                self.train_min_epoch = epoch
-
-            if X_df_test is not None:
-                test_smape = self.evaluate_performance(test_loader)
+                if test_mape < self.test_min_mape:
+                    self.test_min_mape = test_mape
 
                 if test_smape < self.test_min_smape:
                     self.test_min_smape = test_smape
-                    self.test_min_epoch = epoch
 
-            else:
-                test_smape = np.nan
-
-            if verbose:
                 print("Epoch:", '%d,' % (epoch + 1),
                       "Time: {:03.3f},".format(time.time()-start),
                       "Loss: {:.4f},".format(self.train_loss),
-                      "SMAPE (TRAIN): {:.4f},".format(train_smape),
-                      "SMAPE (TEST): {:.4f}".format(test_smape))
+                      "Test SMAPE: {:.4f},".format(test_smape),
+                      "Test MAPE: {:.4f}".format(test_mape))
 
         return self
 

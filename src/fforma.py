@@ -6,7 +6,6 @@ import pandas as pd
 import multiprocessing as mp
 
 from src.meta_model import MetaModels
-from src.meta_learner import MetaLearner
 from src.meta_evaluation import calc_errors
 from src.base_models import SeasonalNaive, Naive2, RandomWalkDrift
 from tsfeatures.metrics import AVAILABLE_METRICS
@@ -46,7 +45,7 @@ class FFORMA(object):
 
     def __init__(self,
                  meta_learner_params,
-                 meta_learner=MetaLearner,
+                 meta_learner,
                  metric='owa',
                  random_seed=1):
 
