@@ -10,28 +10,58 @@ import numpy as np
 import pandas as pd
 import glob
 
+#############################################################################
+# EXPERIMENT SPECS
+#############################################################################
+
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
-grid_qfforma = {'model_type': ['qfforma'],
-                'n_epochs' : [5, 20, 50],
-                'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4, 1e-3, 5e-3, 7e-3, 1e-2, 5e-2],
-                'batch_size': [64, 128],
-                'gradient_eps': [1e-8],
-                'weight_decay': [0],
-                #'lr_scheduler_step_size': [10],
-                'lr_decay': [0.5, 1],
-                'dropout': [0, 0.3],
-                'layers': [[100], [100, 50], [200, 100, 50, 25, 10]],
-                'use_softmax': [False, True],
-                'train_percentile': [0.4, 0.5, 0.6],
-                'random_seed': [1]}
+GRID_QRA1 = {'model_type': ['qra'],}
 
-def generate_grids(grid_dir, model_specs):
+GRID_FQRA1 = {'model_type': ['fqra'],}
+
+GRID_FFORMA1 = {'model_type': ['fforma'],}
+
+GRID_QFFORMA1 = {'model_type': ['qfforma'],
+                 'n_epochs' : [5, 20, 50],
+                 'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4, 1e-3, 5e-3, 7e-3, 1e-2, 5e-2],
+                 'batch_size': [64, 128],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [0.5, 1],
+                 'dropout': [0, 0.3],
+                 'layers': [[100], [100, 50], [200, 100, 50, 25, 10]],
+                 'use_softmax': [False, True],
+                 'train_percentile': [0.4, 0.5, 0.6],
+                 'random_seed': [1]}
+
+ALL_MODEL_SPECS  = {'qra': GRID_QRA1,
+                    'fqra': GRID_FQRA1,
+                    'fforma': GRID_FFORMA1,
+                    'qfforma': GRID_QFFORMA1}
+
+#############################################################################
+# COMMON
+#############################################################################
+
+def generate_grid(args):
+    # Declare grid directories
+    grid_dir ='./results/{}_{}/'.format(args.model, args.dataset)
+    grid_file_name = grid_dir + '{}_{}.csv'.format(args.model, args.dataset)
 
     if not os.path.exists(grid_dir):
         if not os.path.exists('./results/'):
             os.mkdir('./results/')
         os.mkdir(grid_dir)
+
+    # Read grid if not generate
+    if not args.generate_grid:
+        model_specs_df = pd.read_csv(grid_file_name)
+        return model_specs_df
+
+    # Generate grid
+    model_specs = ALL_MODEL_SPECS[args.model]
 
     if os.path.exists(grid_dir):
         print("Erasing old files from {}, ctrl+c to cancel \n".format(grid_dir))
@@ -40,7 +70,6 @@ def generate_grids(grid_dir, model_specs):
         for f in files:
             os.remove(f)
 
-    # Read/Generate hyperparameter grid
     specs_list = list(itertools.product(*list(model_specs.values())))
     model_specs_df = pd.DataFrame(specs_list, columns=list(model_specs.keys()))
 
@@ -48,8 +77,60 @@ def generate_grids(grid_dir, model_specs):
     np.random.seed(1)
     model_specs_df = model_specs_df.sample(frac=1).reset_index(drop=True)
 
-    grid_file_name = grid_dir + 'model_grid_qfforma.csv'
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
+    return model_specs_df
+
+def read_data(dataset='M4'):
+
+    # Load and parse data
+    data_file = './data/experiment/{}_pickle.p'.format(dataset)
+
+    print("data_file", data_file)
+
+    return "hola"
+
+    file = open(data_file, 'rb')
+    data = pickle.load(file)
+
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df']
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+    # Filter unique_ids with X_train_df unique_ids
+    unique_ids = X_train_df['unique_id'].unique()
+    preds_train_df = preds_train_df[preds_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+    y_train_df = y_train_df[y_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+    y_insample_df = y_insample_df[y_insample_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+
+    X_test_df = X_test_df[X_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+    preds_test_df = preds_test_df[preds_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+    y_test_df = y_test_df[y_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+
+    # Sort datasets by unique_id, ds
+    X_train_df = X_train_df.sort_values(['unique_id']).reset_index(drop=True)
+    preds_train_df = preds_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    y_train_df = y_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    y_insample_df = y_insample_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+
+    X_test_df = X_test_df.sort_values(['unique_id']).reset_index(drop=True)
+    preds_test_df = preds_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    y_test_df = y_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    y_test_df['ds'] = y_test_df.groupby('unique_id')['ds'].transform(lambda x: 1 + np.arange(len(x)))
+
+    data = {'X_train_df': X_train_df,
+            'preds_train_df': preds_train_df,
+            'y_train_df': y_train_df,
+            'y_insample_df': y_insample_df,
+            'X_test_df': X_test_df,
+            'preds_test_df': preds_test_df,
+            'y_test_df': y_test_df}
+
+    return data
 
 def upload_to_s3(model_id, predictions, evaluation, dataset):
 
@@ -63,18 +144,22 @@ def upload_to_s3(model_id, predictions, evaluation, dataset):
     pd.to_pickle(predictions, pickle_preds)
     pd.to_pickle(evaluation, pickle_eval)
 
+#############################################################################
+# TRAIN CODE
+#############################################################################
 
-def train_qfforma(data, start_id, end_id, dataset,
-                  generate, results_dir, gpu_id=0,
-                  upload=False):
+def train_qra(data, args):
+    print(data, "qra")
 
-    # Read/Generate hyperparameter grid
-    if generate:
-        generate_grids(grid_dir=results_dir, model_specs=grid_qfforma)
+def train_fqra(data, args):
+    print(data, "fqra")
 
-    grid_file_name = results_dir + 'model_grid_qfforma.csv'
-    model_specs_df = pd.read_csv(grid_file_name)
+def train_fforma(data, args):
+    print(data, "fforma")
 
+def train_qfforma(data, args):
+    print(data, "qfforma")
+      
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -173,75 +258,37 @@ def train_qfforma(data, start_id, end_id, dataset,
             upload_to_s3(mc.model_id, y_hat_df, mc_df, dataset)
             print('Uploaded to s3!')
 
-def read_data(dataset='M4'):
+def train(args):
+    train_model = {'qra': train_qra, 
+                   'fqra': train_fqra,
+                   'fforma': train_fforma,
+                   'qfforma': train_qfforma}
+    
+    # Read data
+    data = read_data(args.dataset)
 
-    # Load and parse data
-    data_file = './data/experiment/{}_pickle.p'.format(dataset)
+    # Read/Generate hyperparameter grid
+    model_specs_df = generate_grid(args)
 
-    file = open(data_file, 'rb')
-    data = pickle.load(file)
+    # Train
+    #train_model[args.model](data, model_specs, args)
 
-    X_train_df = data['X_train_df']
-    preds_train_df = data['preds_train_df']
-    y_train_df = data['y_train_df']
-    y_insample_df = data['y_insample_df']
-
-    X_test_df = data['X_test_df']
-    preds_test_df = data['preds_test_df']
-    y_test_df = data['y_test_df']
-
-    # Filter unique_ids with X_train_df unique_ids
-    unique_ids = X_train_df['unique_id'].unique()
-    preds_train_df = preds_train_df[preds_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-    y_train_df = y_train_df[y_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-    y_insample_df = y_insample_df[y_insample_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-
-    X_test_df = X_test_df[X_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-    preds_test_df = preds_test_df[preds_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-    y_test_df = y_test_df[y_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
-
-    # Sort datasets by unique_id, ds
-    X_train_df = X_train_df.sort_values(['unique_id']).reset_index(drop=True)
-    preds_train_df = preds_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    y_train_df = y_train_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    y_insample_df = y_insample_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-
-    X_test_df = X_test_df.sort_values(['unique_id']).reset_index(drop=True)
-    preds_test_df = preds_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    y_test_df = y_test_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    y_test_df['ds'] = y_test_df.groupby('unique_id')['ds'].transform(lambda x: 1 + np.arange(len(x)))
-
-    data = {'X_train_df': X_train_df,
-            'preds_train_df': preds_train_df,
-            'y_train_df': y_train_df,
-            'y_insample_df': y_insample_df,
-            'X_test_df': X_test_df,
-            'preds_test_df': preds_test_df,
-            'y_test_df': y_test_df}
-
-    return data
+#############################################################################
+# MAIN
+#############################################################################
 
 def parse_args():
     desc = "Experiment QFFORMA"
     parser = argparse.ArgumentParser(description=desc)
 
+    parser.add_argument('--model', type=str, help='Model from qra, fqra, fforma, qfforma')
     parser.add_argument('--dataset', type=str, help='Daily, etc')
     parser.add_argument('--start_id', type=int, help='Start id')
     parser.add_argument('--end_id', type=int, default=0, help='End id')
     parser.add_argument('--generate_grid', type=int, default=0, help='Generate grid')
-    parser.add_argument('--gpu_id', type=int, help='GPU')
+    parser.add_argument('--gpu_id', type=int, default=0, help='GPU')
     parser.add_argument('--upload', type=int, default=1, help='Upload to S3')
     return parser.parse_args()
-
-def main(dataset, start_id, end_id, generate_grid, gpu_id, upload):
-
-    results_dir = './results/{}/'.format(dataset)
-    print("Reading data...")
-    data = read_data(dataset)
-
-    print('Training model...')
-    train_qfforma(data, start_id, end_id, dataset, generate_grid,
-                  results_dir, gpu_id, upload)
 
 if __name__ == '__main__':
 
@@ -250,7 +297,7 @@ if __name__ == '__main__':
     if args is None:
         exit()
 
-    main(args.dataset, args.start_id, args.end_id,
-         args.generate_grid, args.gpu_id, args.upload)
+    assert args.model in ['qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
+    train(args)
 
-# PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1
+# PYTHONPATH=. python src/experiment.py --model qfforma --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1
