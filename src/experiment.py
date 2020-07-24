@@ -145,17 +145,6 @@ def upload_to_s3(model_id, predictions, evaluation, dataset):
 #############################################################################
 
 def train_qra(data, args):
-    print(data, "qra")
-
-def train_fqra(data, args):
-    print(data, "fqra")
-
-def train_fforma(data, args):
-    print(data, "fforma")
-
-def train_qfforma(data, args):
-    print(data, "qfforma")
-      
     # Parse data
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
@@ -166,7 +155,40 @@ def train_qfforma(data, args):
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
+def train_fqra(data, args):
+    # Parse data
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+def train_fforma(data, args):
+    # Parse data
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+def train_qfforma(data, model_specs_df, args):
+    # Parse data
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
     import torch
     from fforma import FFORMA
@@ -175,7 +197,6 @@ def train_qfforma(data, args):
     from utils import evaluate_model_prediction
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    #device = 'cuda'
 
     # Parse hyper parameter data frame
     for i in range(start_id, end_id):
@@ -267,7 +288,7 @@ def train(args):
     model_specs_df = generate_grid(args)
 
     # Train
-    #train_model[args.model](data, model_specs, args)
+    train_model[args.model](data, model_specs_df, args)
 
 #############################################################################
 # MAIN
