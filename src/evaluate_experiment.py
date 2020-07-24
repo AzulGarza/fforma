@@ -63,12 +63,12 @@ def parse_args():
 
     return parser.parse_args()
 
-def main(dataset, generate_grid):
+def main(dataset, start_id, end_id, generate_grid):
 
     results_dir = './results/{}/'.format(dataset)
 
     print('Evaluating models...')
-    evaluate(dataset, generate_grid, results_dir)
+    evaluate(dataset, start_id, end_id, generate_grid, results_dir)
 
 if __name__ == '__main__':
 
@@ -77,6 +77,6 @@ if __name__ == '__main__':
     if args is None:
         exit()
 
-    main(args.dataset, args.generate_grid)
+    main(args.dataset, args.start_id, args.end_id, args.generate_grid)
 
 # PYTHONPATH=. python -m src.evaluate_experiment --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 1
