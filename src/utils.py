@@ -324,13 +324,17 @@ def long_to_wide_uid(uid, df, full_columns, cols_to_parse):
 
     return horizontal_df
 
-def long_to_wide(long_df):
+def long_to_wide(long_df, threads=None):
+
+    if threads is None:
+        threads = mp.cpu_count()
+
     cols_to_parse = set(long_df.columns) - {'unique_id'}
     partial_long_to_wide_uid = partial(long_to_wide_uid,
                                        full_columns=long_df.columns,
                                        cols_to_parse=cols_to_parse)
 
-    with mp.Pool() as pool:
+    with mp.Pool(threads) as pool:
         wide_df = pool.starmap(partial_long_to_wide_uid, long_df.groupby('unique_id'))
 
     wide_df = pd.concat(wide_df).reset_index(drop=True)
