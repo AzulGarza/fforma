@@ -85,10 +85,6 @@ def read_data(dataset='M4'):
     # Load and parse data
     data_file = './data/experiment/{}_pickle.p'.format(dataset)
 
-    print("data_file", data_file)
-
-    return "hola"
-
     file = open(data_file, 'rb')
     data = pickle.load(file)
 
