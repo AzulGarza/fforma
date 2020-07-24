@@ -231,7 +231,7 @@ def evaluate_wide_panel(wide_panel, metric, remove_na=True):
 
     return loss_panel
 
-def evaluate_fforma_experiment(long_preds, directory, kind='M4', threads=None):
+def evaluate_fforma_experiment(long_preds, directory, kind='M4'):
     filepath = f'{directory}/{kind}_errors_naive2.p'
 
     if not os.path.exists(filepath):
@@ -259,7 +259,7 @@ def evaluate_fforma_experiment(long_preds, directory, kind='M4', threads=None):
     errors_naive2 = pd.read_pickle(filepath)
 
     #predictions
-    predictions = long_to_wide(long_preds, threads=threads)
+    predictions = long_preds.groupby('unique_id')['y_hat'].apply(list).to_frame().reset_index()
 
     #Preparing to evaluation
     complete_data = predictions.merge(errors_naive2, how='left', on=['unique_id'])
