@@ -10,10 +10,20 @@
 pip install git+https://github.com/FedericoGarza/fforma
 ```
 
-# Usage
+# Download Data
+```source
+mkdir data/
+mkdir data/experiment/
+cd data /experiment/ 
+wget https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/M4_pickle.p # curl -O
+wget https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/M3_pickle.p
+wget https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/TOURISM_pickle.p
+```
 
+# Usage
 See `comparison-fforma-r.ipynb` for an example using the original data.
 PYTHONPATH=. python src/experiment.py --dataset 'M4' --start_id 1 --end_id 2 --generate_grid 0 --gpu_id 3 --upload 1
+
 
 # Current Results
 
