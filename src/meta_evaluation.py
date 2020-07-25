@@ -11,6 +11,7 @@ from tqdm import tqdm
 from copy import deepcopy
 from src.utils import long_to_wide, wide_to_long
 from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import smape, mape, mase
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 
@@ -302,43 +303,3 @@ def get_prediction_panel(y_panel_df, h, freq):
     predict_panel = pd.concat(predict_panel)
 
     return predict_panel
-
-def smape(y, y_hat):
-    """
-    Calculates Symmetric Mean Absolute Percentage Error.
-    y: numpy array
-    actual test values
-    y_hat: numpy array
-    predicted values
-    return: sMAPE
-    """
-    y = np.reshape(y, (-1,))
-    y_hat = np.reshape(y_hat, (-1,))
-    smape = np.mean(2.0 * np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
-    return smape
-
-def mase(y, y_hat, y_train, seasonality):
-    """
-    Calculates Mean Absolute Scaled Error.
-    y: numpy array
-    actual test values
-    y_hat: numpy array
-    predicted values
-    y_train: numpy array
-    actual train values for Naive1 predictions
-    seasonality: int
-    main frequency of the time series
-    Quarterly 4, Daily 7, Monthly 12
-    return: MASE
-    """
-    y_hat_naive = []
-    for i in range(seasonality, len(y_train)):
-        y_hat_naive.append(y_train[(i - seasonality)])
-
-    masep = np.mean(abs(y_train[seasonality:] - y_hat_naive))
-    if masep==0:
-        print('y_train', y_train)
-        print('y_hat_naive', y_hat_naive)
-
-    mase = np.mean(abs(y - y_hat)) / masep
-    return mase

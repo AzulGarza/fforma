@@ -21,6 +21,8 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from src.meta_evaluation import calc_errors_widing
+from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import mape, smape
 from src.metrics.pytorch_metrics import WeightedSMAPE2Loss, WeightedMAPELoss
 
 ##############################################################################
@@ -117,7 +119,19 @@ class MetaLearnerXGBoost(object):
 
         return 'FFORMA-loss', fforma_loss#, False
 
-    def fit(self, X_train_df, preds_train_df, y_train_df, y_insample_df, verbose=True, errors=None):
+    def calc_errors(self, preds_df, y_panel_df, y_insample_df):
+        errors = calc_errors_widing(preds_df=preds_df,
+                                    y_panel_df=y_panel_df,
+                                    y_insample_df=y_insample_df,
+                                    seasonality=self.df_seasonality,
+                                    benchmark_model=self.benchmark_model)
+
+        return errors
+
+    def fit(self, X_train_df, preds_train_df=None,
+            y_train_df=None, y_insample_df=None, verbose=True,
+            errors=None, X_test_df=None, preds_test_df=None,
+            y_test_df=None):
         """Fits FFORMA.
 
 
@@ -142,11 +156,9 @@ class MetaLearnerXGBoost(object):
 
         print('Calculating errors...')
         if errors is None:
-            errors = calc_errors_widing(preds_df=preds_train_df,
-                                        y_panel_df=y_train_df,
-                                        y_insample_df=y_insample_df,
-                                        seasonality=self.df_seasonality,
-                                        benchmark_model=self.benchmark_model)
+            errors = self.calc_errors(preds_df=preds_train_df,
+                                      y_panel_df=y_train_df,
+                                      y_insample_df=y_insample_df)
         else:
             errors = errors.set_index('unique_id')
 
@@ -199,6 +211,14 @@ class MetaLearnerXGBoost(object):
             early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=verbose
         )
+
+        y_hat_df = self.predict(X_test_df,
+                                base_model_preds=preds_test_df)
+
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
 
         return self
 

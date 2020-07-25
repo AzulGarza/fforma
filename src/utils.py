@@ -185,8 +185,8 @@ class FactorQuantileRegressionAveraging:
 
         y_hat_df = self.predict(X_test_df)
 
-        self.test_min_smape = 100 * evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                                   y_train=None, metric=smape)['error'].mean()
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
         self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
                                             y_train=None, metric=mape)['error'].mean()
 
@@ -486,19 +486,19 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
 #         evaluation = compute(*evaluation)
 #     return evaluation
 
-def smape(y, y_hat):
-    """
-    Calculates Symmetric Mean Absolute Percentage Error.
-    y: numpy array
-    actual test values
-    y_hat: numpy array
-    predicted values
-    return: sMAPE
-    """
-    y = np.reshape(y, (-1,))
-    y_hat = np.reshape(y_hat, (-1,))
-    smape = np.mean(2.0 * np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
-    return smape
+# def smape(y, y_hat):
+#     """
+#     Calculates Symmetric Mean Absolute Percentage Error.
+#     y: numpy array
+#     actual test values
+#     y_hat: numpy array
+#     predicted values
+#     return: sMAPE
+#     """
+#     y = np.reshape(y, (-1,))
+#     y_hat = np.reshape(y_hat, (-1,))
+#     smape = np.mean(2.0 * np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
+#     return smape
 
 def mase(y, y_hat, y_train, seasonality):
     """
