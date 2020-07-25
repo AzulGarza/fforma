@@ -385,6 +385,7 @@ if __name__ == '__main__':
     args = parse_args()
     if args is None:
         exit()
-
+    
+    assert args.dataset in ['TOURISM', 'M3', 'M4'], "Check if dataset {} is available".format(args.dataset)
     assert args.model in ['qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
     train(args)
