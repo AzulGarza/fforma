@@ -5,9 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/FedericoGarza/fforma/blob/master/LICENSE)
 
 # Installation
-
-```python
-pip install git+https://github.com/FedericoGarza/fforma
+```source
+pip install git+https://github.com/FedericoGarza/tsfeatures
 ```
 
 # Download Data
