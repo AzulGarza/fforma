@@ -128,7 +128,6 @@ class FactorQuantileRegressionAveraging:
 
         #print('y', y.shape, 'X', X.shape)
         np.random.seed(1)
-        X = X + 1e-1 * np.random.normal(size=X.shape)
         opt_params = QuantReg(y, X).fit(self.tau).params
         opt_params = dict(zip(cols, opt_params))
         opt_params = pd.DataFrame(opt_params, index=[uid])
@@ -263,8 +262,8 @@ class LassoQuantileRegressionAveraging:
 
         y_hat_df = self.predict(X_test_df)
 
-        self.test_min_smape = 100 * evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                                   y_train=None, metric=smape)['error'].mean()
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
         self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
                                             y_train=None, metric=mape)['error'].mean()
 

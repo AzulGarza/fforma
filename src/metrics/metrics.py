@@ -117,6 +117,7 @@ def smape(y, y_hat):
     scale = np.abs(y) + np.abs(y_hat)
     smape = divide_no_nan(delta_y, scale)
     smape = 200 * np.mean(smape)
+    assert smape <= 200, 'SMAPE should be lower than 200'
 
     return smape
 
