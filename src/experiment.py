@@ -22,11 +22,11 @@ from src.utils import (
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 GRID_QRA1 = {'model_type': ['qra'],
-             'tau': [0.45, 0.5, 0.55],
+             'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
              'penalty': [0.25, 0.5, 0.7]}
 
 GRID_FQRA1 = {'model_type': ['fqra'],
-              'tau': [0.45, 0.5, 0.55],
+              'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
               'n_components': [1]} # for timeseries without insufficient obs
 
 GRID_FFORMA1 = {'model_type': ['fforma'],

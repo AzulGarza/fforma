@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import numpy as np
+np.warnings.filterwarnings('ignore')
 import pandas as pd
 import random
 from itertools import product
@@ -128,6 +129,7 @@ class FactorQuantileRegressionAveraging:
 
         #print('y', y.shape, 'X', X.shape)
         np.random.seed(1)
+        eps = np.random.normal(scale=0.05, size=y.shape)
         opt_params = QuantReg(y, X).fit(self.tau).params
         opt_params = dict(zip(cols, opt_params))
         opt_params = pd.DataFrame(opt_params, index=[uid])
