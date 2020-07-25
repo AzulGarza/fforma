@@ -51,6 +51,21 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'display_step': [5],
                  'random_seed': [1]}
 
+GRID_QFFORMA2 = {'model_type': ['qfforma'],
+                 'n_epochs' : [51, 101, 201],
+                 'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4],
+                 'batch_size': [64],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [0.5, 0.8, 1],
+                 'dropout': [0, 0.3],
+                 'layers': ['[200, 100, 50, 25, 10]', '[400, 200, 100, 50, 25]'],
+                 'use_softmax': [True],
+                 'train_percentile': [0.45, 0.48, 0.49, 0.5, 0.51, 0.55],
+                 'display_step': [10],
+                 'random_seed': [1]}
+
 ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
                             'TOURISM': GRID_QRA1},
@@ -60,7 +75,7 @@ ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                     'fforma': {'M4': GRID_FFORMA1,
                                'M3': GRID_FFORMA1,
                                'TOURISM': GRID_FFORMA1},
-                    'qfforma': {'M4': GRID_QFFORMA1,
+                    'qfforma': {'M4': GRID_QFFORMA2,
                                 'M3': GRID_QFFORMA1,
                                 'TOURISM': GRID_FFORMA1}}
 
@@ -394,7 +409,7 @@ if __name__ == '__main__':
     args = parse_args()
     if args is None:
         exit()
-    
+
     assert args.dataset in ['TOURISM', 'M3', 'M4'], "Check if dataset {} is available".format(args.dataset)
     assert args.model in ['qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
     train(args)
