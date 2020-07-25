@@ -51,10 +51,18 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'display_step': [5],
                  'random_seed': [1]}
 
-ALL_MODEL_SPECS  = {'qra': GRID_QRA1,
-                    'fqra': GRID_FQRA1,
-                    'fforma': GRID_FFORMA1,
-                    'qfforma': GRID_QFFORMA1}
+ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
+                            'M3': GRID_QRA1,
+                            'TOURISM': GRID_QRA1},
+                    'fqra': {'M4': GRID_FQRA1,
+                             'M3': GRID_FQRA1,
+                             'TOURISM': GRID_FQRA1},
+                    'fforma': {'M4': GRID_FFORMA1,
+                               'M3': GRID_FFORMA1,
+                               'TOURISM': GRID_FFORMA1},
+                    'qfforma': {'M4': GRID_QFFORMA1,
+                                'M3': GRID_QFFORMA1,
+                                'TOURISM': GRID_FFORMA1}}
 
 #############################################################################
 # COMMON
@@ -78,7 +86,7 @@ def generate_grid(args):
         return model_specs_df, grid_dir
 
     # Generate grid
-    model_specs = ALL_MODEL_SPECS[args.model]
+    model_specs = ALL_MODEL_SPECS[args.model][args.dataset]
 
     if os.path.exists(grid_dir):
         print("Erasing old files from {}, ctrl+c to cancel \n".format(grid_dir))
@@ -197,6 +205,7 @@ def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
         mc_df = pd.DataFrame(mc.to_dict(), index=[0])
         results_df = mc_df.merge(results_df, how='left', on=['model_id'])
         upload_to_s3(args, mc.model_id, y_hat_df, results_df)
+        print('Uploaded to s3!')
 
 
 #############################################################################
