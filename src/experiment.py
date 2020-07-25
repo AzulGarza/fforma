@@ -31,7 +31,7 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  #'lr_scheduler_step_size': [10],
                  'lr_decay': [0.5, 1],
                  'dropout': [0, 0.3],
-                 'layers': [[100], [100, 50], [200, 100, 50, 25, 10]],
+                 'layers': ['[100]', '[100, 50]', '[200, 100, 50, 25, 10]'],
                  'use_softmax': [False, True],
                  'train_percentile': [0.4, 0.5, 0.6],
                  'display_step': [5],
@@ -48,12 +48,14 @@ ALL_MODEL_SPECS  = {'qra': GRID_QRA1,
 
 def generate_grid(args):
     # Declare grid directories
-    grid_dir ='./results/{}_{}/'.format(args.model, args.dataset)
+    grid_dir ='./results/{}/{}/'.format(args.model, args.dataset)
     grid_file_name = grid_dir + '{}_{}.csv'.format(args.model, args.dataset)
 
     if not os.path.exists(grid_dir):
         if not os.path.exists('./results/'):
             os.mkdir('./results/')
+        if not os.path.exists('./results/{}/'.format(args.model)):
+            os.mkdir('./results/{}/'.format(args.model))
         os.mkdir(grid_dir)
 
     # Read grid if not generate
@@ -129,14 +131,26 @@ def read_data(dataset='M4'):
 
     return data
 
-def upload_to_s3(model_id, predictions, evaluation, dataset):
+def train(args):
+    train_model = {'qra': train_qra, 
+                   'fqra': train_fqra,
+                   'fforma': train_fforma,
+                   'qfforma': train_qfforma}
+    
+    # Read data
+    data = read_data(args.dataset)
 
-    #mc_dict = mc_row.to_dict()
-    #data = {**mc_dict, **evaluation_dict}
-    #data = pd.DataFrame(data, index=[0])
+    # Read/Generate hyperparameter grid
+    model_specs_df, grid_dir = generate_grid(args)
 
-    pickle_preds = f's3://research-storage-orax/{dataset}/qfforma-{model_id}.p'
-    pickle_eval = f's3://research-storage-orax/{dataset}/evaluation-training/qfforma-{model_id}.p'
+    # Train
+    train_model[args.model](data, grid_dir, model_specs_df, args)
+
+def upload_to_s3(args, model_id, predictions, evaluation):
+    s3_dir ='{}/{}/'.format(args.model, args.dataset)
+
+    pickle_preds = f's3://research-storage-orax/{s3_dir}/{model_id}.p'
+    pickle_eval = f's3://research-storage-orax/{s3_dir}/evaluation-training/{model_id}.p'
 
     pd.to_pickle(predictions, pickle_preds)
     pd.to_pickle(evaluation, pickle_eval)
@@ -222,7 +236,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
                         'lr_scheduler_step_size': int(lr_scheduler_step_size),
                         'lr_decay': mc.lr_decay,
                         'dropout': mc.dropout,
-                        'layers': mc.layers,
+                        'layers': ast.literal_eval(mc.layers),
                         'use_softmax': mc.use_softmax,
                         'loss_function': WeightedPinballLoss(mc.train_percentile),
                         'display_step': int(mc.display_step),
@@ -261,34 +275,17 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         # print("SMAPE: {:03.3f}".format(model_smape))
 
         evaluation_dict = {'model_id': mc.model_id,
-                          'train_loss': model.meta_learner.train_loss,
-                          'test_min_smape': model.meta_learner.test_min_smape,
-                          'test_min_mape': model.meta_learner.test_min_mape}
+                           'train_loss': model.meta_learner.train_loss,
+                           'test_min_smape': model.meta_learner.test_min_smape,
+                           'test_min_mape': model.meta_learner.test_min_mape}
 
-        df_results = pd.DataFrame(evaluation_dict, index=[0])
+        results_df = pd.DataFrame(evaluation_dict, index=[0])
 
         # Output evaluation
         if args.upload:
             mc_df = pd.DataFrame(mc.to_dict(), index=[0])
-            mc_df = mc_df.merge(df_results, how='left', on=['model_id'])
-
-            upload_to_s3(mc.model_id, y_hat_df, mc_df, dataset)
-            print('Uploaded to s3!')
-
-def train(args):
-    train_model = {'qra': train_qra, 
-                   'fqra': train_fqra,
-                   'fforma': train_fforma,
-                   'qfforma': train_qfforma}
-    
-    # Read data
-    data = read_data(args.dataset)
-
-    # Read/Generate hyperparameter grid
-    model_specs_df, grid_dir = generate_grid(args)
-
-    # Train
-    train_model[args.model](data, grid_dir, model_specs_df, args)
+            results_df = mc_df.merge(results_df, how='left', on=['model_id'])
+            upload_to_s3(args, mc.model_id, y_hat_df, results_df)
 
 #############################################################################
 # MAIN
