@@ -33,6 +33,7 @@ pip install xgboost
 pip install s3fs
 pip install boto3
 pip instal -U pandas
+pip install git+https://github.com/FedericoGarza/tsfeatures
 conda install dask
 #conda install -c conda-forge pathos
 
