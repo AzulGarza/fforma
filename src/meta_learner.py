@@ -215,6 +215,9 @@ class MetaLearnerXGBoost(object):
         y_hat_df = self.predict(X_test_df,
                                 base_model_preds=preds_test_df)
 
+        y_hat_df = y_hat_df.sort_values(['unique_id', 'ds'])
+        y_test_df = y_test_df.sort_values(['unique_id', 'ds'])
+
         self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
                                              y_train=None, metric=smape)['error'].mean()
         self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,

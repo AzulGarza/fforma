@@ -310,6 +310,9 @@ def train_fqra(data, grid_dir, model_specs_df, args):
 
 def train_fforma(data, grid_dir, model_specs_df, args):
     # Parse data
+    data_file = './data/experiment/{}_pickle.p'.format(args.dataset)
+    data = pd.read_pickle(data_file)
+
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
     y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
