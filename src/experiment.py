@@ -10,13 +10,17 @@ import time
 import numpy as np
 import pandas as pd
 
+from src.utils import LassoQuantileRegressionAveraging
+
 #############################################################################
 # EXPERIMENT SPECS
 #############################################################################
 
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
-GRID_QRA1 = {'model_type': ['qra'],}
+GRID_QRA1 = {'model_type': ['qra'],
+             'tau': [0.45, 0.5, 0.55],
+             'penalty': [0.25, 0.5, 1, 2, 4]}
 
 GRID_FQRA1 = {'model_type': ['fqra'],}
 
@@ -156,8 +160,10 @@ def upload_to_s3(args, model_id, predictions, evaluation):
     pd.to_pickle(evaluation, pickle_eval)
 
 def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
+    #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
+
     if args.model in ['qra', 'fqra']:
-      y_hat_df = model.predict(preds_test_df, y_test_df)
+      y_hat_df = model.predict(preds_test_df)
     
     elif args.model in ['fforma', 'qfforma']:
       y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
@@ -165,9 +171,8 @@ def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
 
     evaluation_dict = {'model_id': mc.model_id,
-                        'train_loss': model.train_loss,
-                        'test_min_smape': model.test_min_smape,
-                        'test_min_mape': model.test_min_mape}
+                       'test_min_smape': model.test_min_smape,
+                       'test_min_mape': model.test_min_mape}
 
     results_df = pd.DataFrame(evaluation_dict, index=[0])
 
@@ -193,9 +198,23 @@ def train_qra(data, grid_dir, model_specs_df, args):
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
 
-    # Predict and Evaluate
-    assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
-    predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
+    # Parse hyper parameter data frame
+    for i in range(args.start_id, args.end_id):
+
+        mc = model_specs_df.loc[i, :]
+
+        print(47*'=' + '\n')
+        print('model_config: {}'.format(i))
+        print(mc)
+        print(47*'=' + '\n')
+
+        # Instantiate, fit
+        model =  LassoQuantileRegressionAveraging(tau=mc.tau, penalty=mc.penalty)
+        model.fit(preds_train_df, y_train_df, preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
+
+        # Predict and Evaluate
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
 def train_fqra(data, grid_dir, model_specs_df, args):
     # Parse data
@@ -250,9 +269,6 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         print(mc)
         print(47*'=' + '\n')
 
-        # Check if result already exists
-        output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
-
         lr_scheduler_step_size = max(mc.n_epochs // 3, 2)
 
         model_params = {'n_epochs': int(mc.n_epochs),
@@ -270,7 +286,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
                         'random_seed': int(mc.random_seed),
                         'device': device}
 
-        # Instantiate, fit, predict and evaluate
+        # Instantiate, fit
         model = FFORMA(meta_learner_params=model_params,
                        meta_learner=MetaLearnerNN,
                        random_seed=int(mc.random_seed))

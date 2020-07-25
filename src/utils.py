@@ -20,6 +20,9 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 import time
 
+from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import smape, mape
+
 freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
@@ -237,7 +240,7 @@ class LassoQuantileRegressionAveraging:
 
         return model
 
-    def fit(self, X_df, y_df):
+    def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
         X: pandas df
             Panel DataFrame with columns unique_id, ds, models to ensemble
@@ -264,7 +267,9 @@ class LassoQuantileRegressionAveraging:
 
         self.models_ = pd.concat(models)
 
-
+        y_hat_df = self.predict(X_test_df)
+        self.test_min_smape = evaluate_panel(y_test_df, y_hat_df, None, smape).mean()
+        self.test_min_mape = evaluate_panel(y_test_df, y_hat_df, None, mape).mean()
         return self
 
     def predict(self, X_df):
@@ -281,8 +286,7 @@ class LassoQuantileRegressionAveraging:
         with ProgressBar():
             y_hat = compute(*y_hat)
 
-        y_hat = pd.concat(y_hat).rename(f'p{int(100 * self.tau)}').to_frame()
-
+        y_hat = pd.concat(y_hat).rename('y_hat').to_frame().reset_index()
         return y_hat
 
 def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
