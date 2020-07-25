@@ -30,7 +30,7 @@ GRID_FQRA1 = {'model_type': ['fqra'],
               'n_components': [1]} # for timeseries without insufficient obs
 
 GRID_FFORMA1 = {'model_type': ['fforma'],
-                'n_estimators': [5, 10, 20, 30],
+                'n_estimators': [50, 100, 200, 300],
                 'eta': [0.1, 0.25, 0.5, 0.6],
                 'max_depth': [5, 15, 20, 25],
                 'subsample': [0.8, 0.85, 0.9, 0.95],
