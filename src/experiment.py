@@ -36,6 +36,13 @@ GRID_FFORMA1 = {'model_type': ['fforma'],
                 'subsample': [0.8, 0.85, 0.9, 0.95],
                 'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8]}
 
+GRID_FFORMAM4 = {'model_type': ['fforma'],
+                'n_estimators': [94],
+                'eta': [0.58],
+                'max_depth': [14],
+                'subsample': [0.92],
+                'colsample_bytree': [0.77]}
+
 GRID_QFFORMAM3 = {'model_type': ['qfforma'],
                   'n_epochs' : [5, 10, 15],
                   'lr': [1e-3, 5e-3, 7e-3],
@@ -87,7 +94,7 @@ ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                     'fqra': {'M4': GRID_FQRA1,
                              'M3': GRID_FQRA1,
                              'TOURISM': GRID_FQRA1},
-                    'fforma': {'M4': GRID_FFORMA1,
+                    'fforma': {'M4': GRID_FFORMAM4,
                                'M3': GRID_FFORMA1,
                                'TOURISM': GRID_FFORMA1},
                     'qfforma': {'M4': GRID_QFFORMA2,
