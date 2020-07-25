@@ -20,7 +20,7 @@ DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 GRID_QRA1 = {'model_type': ['qra'],
              'tau': [0.45, 0.5, 0.55],
-             'penalty': [0.25, 0.5, 1, 2, 4]}
+             'penalty': [0.25, 0.5, 0.7]}
 
 GRID_FQRA1 = {'model_type': ['fqra'],}
 
@@ -136,11 +136,11 @@ def read_data(dataset='M4'):
     return data
 
 def train(args):
-    train_model = {'qra': train_qra, 
+    train_model = {'qra': train_qra,
                    'fqra': train_fqra,
                    'fforma': train_fforma,
                    'qfforma': train_qfforma}
-    
+
     # Read data
     data = read_data(args.dataset)
 
@@ -164,7 +164,7 @@ def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
 
     if args.model in ['qra', 'fqra']:
       y_hat_df = model.predict(preds_test_df)
-    
+
     elif args.model in ['fforma', 'qfforma']:
       y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
 
@@ -175,6 +175,7 @@ def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
                        'test_min_mape': model.test_min_mape}
 
     results_df = pd.DataFrame(evaluation_dict, index=[0])
+    print(results_df)
 
     # Output evaluation
     if args.upload:

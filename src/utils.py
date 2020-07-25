@@ -248,8 +248,8 @@ class LassoQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        grouped_X = X_df.groupby('unique_id')
-        grouped_y = y_df.groupby('unique_id')
+        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
 
         partial_quantile_ts = partial(self._fit_quantile_ts,
                                       tau=self.tau)
@@ -268,8 +268,12 @@ class LassoQuantileRegressionAveraging:
         self.models_ = pd.concat(models)
 
         y_hat_df = self.predict(X_test_df)
-        self.test_min_smape = evaluate_panel(y_test_df, y_hat_df, None, smape).mean()
-        self.test_min_mape = evaluate_panel(y_test_df, y_hat_df, None, mape).mean()
+
+        self.test_min_smape = 100 * evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                                   y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
+
         return self
 
     def predict(self, X_df):
@@ -278,7 +282,7 @@ class LassoQuantileRegressionAveraging:
         check_is_fitted(self, 'models_')
 
         y_hat = []
-        for uid, X in X_df.groupby('unique_id'):
+        for uid, X in X_df.set_index(['unique_id', 'ds']).groupby('unique_id'):
             model = self.models_.loc[uid, 'model']
             preds = delayed(model.predict)(X, self.penalty)
             y_hat.append(preds)
@@ -433,60 +437,60 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
     return model_owa, model_mase, model_smape
 
 
-def evaluate_panel(y_panel, y_hat_panel, metric,
-                   y_insample=None, seasonalities=None):
-    """
-    Calculates metric for y_panel and y_hat_panel
-    y_panel: pandas df
-    panel with columns unique_id, ds, y
-    y_naive2_panel: pandas df
-    panel with columns unique_id, ds, y_hat
-    y_insample: pandas df
-    panel with columns unique_id, ds, y (train)
-    this is used in the MASE
-    seasonality: int
-    main frequency of the time series
-    Quarterly 4, Daily 7, Monthly 12
-    return: list of metric evaluations
-    """
-    metric_name = metric.__code__.co_name
-
-    y_panel = y_panel.sort_values(['unique_id', 'ds'])
-    y_hat_panel = y_hat_panel.sort_values(['unique_id', 'ds'])
-    if y_insample is not None:
-        y_insample = y_insample.sort_values(['unique_id', 'ds'])
-
-    assert len(y_panel)==len(y_hat_panel)
-    assert all(y_panel.unique_id.unique() == y_hat_panel.unique_id.unique()), "not same u_ids"
-
-    evaluation = []
-    for u_id in y_panel.unique_id.unique():
-        top_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'left'))
-        bottom_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'right'))
-        y_id = y_panel[top_row:bottom_row].y.to_numpy()
-
-        top_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'left'))
-        bottom_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'right'))
-        y_hat_id = y_hat_panel[top_row:bottom_row].y_hat.to_numpy()
-        assert len(y_id)==len(y_hat_id)
-
-        if metric_name == 'mase':
-            assert (y_insample is not None) and (seasonalities is not None)
-            #seasonality = seasonalities[u_id]
-            freq = u_id[0]
-            seasonality = FREQ_DICT[freq]
-
-            top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
-            bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
-            y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
-            evaluation_id = delayed(metric)(y_id, y_hat_id, y_insample_id, seasonality)
-        else:
-            evaluation_id = delayed(metric)(y_id, y_hat_id)
-        evaluation.append(evaluation_id)
-
-    with ProgressBar():
-        evaluation = compute(*evaluation)
-    return evaluation
+# def evaluate_panel(y_panel, y_hat_panel, metric,
+#                    y_insample=None, seasonalities=None):
+#     """
+#     Calculates metric for y_panel and y_hat_panel
+#     y_panel: pandas df
+#     panel with columns unique_id, ds, y
+#     y_naive2_panel: pandas df
+#     panel with columns unique_id, ds, y_hat
+#     y_insample: pandas df
+#     panel with columns unique_id, ds, y (train)
+#     this is used in the MASE
+#     seasonality: int
+#     main frequency of the time series
+#     Quarterly 4, Daily 7, Monthly 12
+#     return: list of metric evaluations
+#     """
+#     metric_name = metric.__code__.co_name
+#
+#     y_panel = y_panel.sort_values(['unique_id', 'ds'])
+#     y_hat_panel = y_hat_panel.sort_values(['unique_id', 'ds'])
+#     if y_insample is not None:
+#         y_insample = y_insample.sort_values(['unique_id', 'ds'])
+#
+#     assert len(y_panel)==len(y_hat_panel)
+#     assert all(y_panel.unique_id.unique() == y_hat_panel.unique_id.unique()), "not same u_ids"
+#
+#     evaluation = []
+#     for u_id in y_panel.unique_id.unique():
+#         top_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'left'))
+#         bottom_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'right'))
+#         y_id = y_panel[top_row:bottom_row].y.to_numpy()
+#
+#         top_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'left'))
+#         bottom_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'right'))
+#         y_hat_id = y_hat_panel[top_row:bottom_row].y_hat.to_numpy()
+#         assert len(y_id)==len(y_hat_id)
+#
+#         if metric_name == 'mase':
+#             assert (y_insample is not None) and (seasonalities is not None)
+#             #seasonality = seasonalities[u_id]
+#             freq = u_id[0]
+#             seasonality = FREQ_DICT[freq]
+#
+#             top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
+#             bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
+#             y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
+#             evaluation_id = delayed(metric)(y_id, y_hat_id, y_insample_id, seasonality)
+#         else:
+#             evaluation_id = delayed(metric)(y_id, y_hat_id)
+#         evaluation.append(evaluation_id)
+#
+#     with ProgressBar():
+#         evaluation = compute(*evaluation)
+#     return evaluation
 
 def smape(y, y_hat):
     """
