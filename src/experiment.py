@@ -10,7 +10,10 @@ import time
 import numpy as np
 import pandas as pd
 
-from src.utils import LassoQuantileRegressionAveraging
+from src.utils import (
+    LassoQuantileRegressionAveraging,
+    FactorQuantileRegressionAveraging
+)
 
 #############################################################################
 # EXPERIMENT SPECS
@@ -22,7 +25,9 @@ GRID_QRA1 = {'model_type': ['qra'],
              'tau': [0.45, 0.5, 0.55],
              'penalty': [0.25, 0.5, 0.7]}
 
-GRID_FQRA1 = {'model_type': ['fqra'],}
+GRID_FQRA1 = {'model_type': ['fqra'],
+              'tau': [0.45, 0.5, 0.55],
+              'n_components': [1]} # for timeseries without insufficient obs 
 
 GRID_FFORMA1 = {'model_type': ['fforma'],}
 
@@ -227,6 +232,25 @@ def train_fqra(data, grid_dir, model_specs_df, args):
     X_test_df = data['X_test_df']
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
+
+    # Parse hyper parameter data frame
+    for i in range(args.start_id, args.end_id):
+
+        mc = model_specs_df.loc[i, :]
+
+        print(47*'=' + '\n')
+        print('model_config: {}'.format(i))
+        print(mc)
+        print(47*'=' + '\n')
+
+        # Instantiate, fit
+        model = FactorQuantileRegressionAveraging(tau=mc.tau,
+                                                  n_components=mc.n_components)
+        model.fit(preds_train_df, y_train_df, preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
+
+        # Predict and Evaluate
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
 def train_fforma(data, grid_dir, model_specs_df, args):
     # Parse data

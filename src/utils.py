@@ -126,21 +126,13 @@ class FactorQuantileRegressionAveraging:
 
             assert cond_number < 1e15, f'Matrix of forecasts is ill-conditioned. {uid}\n{X.shape}'
 
-        opt_params_l = []
+        #print('y', y.shape, 'X', X.shape)
+        np.random.seed(1)
+        X = X + 1e-1 * np.random.normal(size=X.shape)
+        opt_params = QuantReg(y, X).fit(self.tau).params
+        opt_params = dict(zip(cols, opt_params))
+        opt_params = pd.DataFrame(opt_params, index=[uid])
 
-        for tau in self.tau:
-            opt_params = QuantReg(y, X).fit(tau).params
-
-            opt_params = dict(zip(cols, opt_params))
-            tau = 100 * tau
-            tau = int(tau)
-            tau = 'p' + str(tau)
-            index = pd.MultiIndex.from_arrays([[uid], [tau]], names=('unique_id', 'quantile'))
-            opt_params = pd.DataFrame(opt_params, index=index)
-
-            opt_params_l.append(opt_params)
-
-        opt_params = pd.concat(opt_params_l)
         pca_model = pd.DataFrame({'model': pca_model}, index=[uid])
 
         return opt_params, pca_model
@@ -160,7 +152,7 @@ class FactorQuantileRegressionAveraging:
 
         return X
 
-    def fit(self, X_df, y_df):
+    def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
         X: pandas df
             Panel DataFrame with columns unique_id, ds, models to ensemble
@@ -168,8 +160,8 @@ class FactorQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        grouped_X = X_df.groupby('unique_id')
-        grouped_y = y_df.groupby('unique_id')
+        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
 
         partial_quantile_ts = partial(self._fit_quantile_ts,
                                       n_components=self.n_components,
@@ -188,8 +180,15 @@ class FactorQuantileRegressionAveraging:
 
         params, models = zip(*params_models)
 
-        self.weigths_ = pd.concat(params).fillna(0)
+        self.weigths_ = pd.concat(params).fillna(0).rename_axis('unique_id')
         self.models_ = pd.concat(models)
+
+        y_hat_df = self.predict(X_test_df)
+
+        self.test_min_smape = 100 * evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                                   y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
 
         return self
 
@@ -201,7 +200,7 @@ class FactorQuantileRegressionAveraging:
                                               add_constant_x=self.add_constant_)
 
         X_transformed = []
-        for uid, X in X_df.groupby('unique_id'):
+        for uid, X in X_df.set_index(['unique_id', 'ds']).groupby('unique_id'):
             model = self.models_.loc[uid, 'model']
             transformed = delayed(partial_predict_quantile_ts)(model, X)
             X_transformed.append(transformed)
@@ -210,13 +209,9 @@ class FactorQuantileRegressionAveraging:
             X_transformed = compute(*X_transformed)
 
         X_transformed = pd.concat(X_transformed).fillna(0)
-
         y_hat = (self.weigths_ * X_transformed).sum(axis=1)
         y_hat.name = 'y_hat'
-        y_hat = y_hat.to_frame()
-
-        y_hat = y_hat.pivot_table(index=['unique_id','ds'], columns='quantile')
-        y_hat.columns = y_hat.columns.droplevel().rename(None)
+        y_hat = y_hat.to_frame().reset_index()
 
         return y_hat
 
@@ -233,7 +228,6 @@ class LassoQuantileRegressionAveraging:
         """
         y = y_df['y']
         X = X_df
-
         model = L1QR(y, X, tau).fit()
 
         model = pd.DataFrame({'model': model}, index=[uid])
