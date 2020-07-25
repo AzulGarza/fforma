@@ -8,6 +8,7 @@ import multiprocessing as mp
 from math import sqrt
 from functools import partial
 from dask import delayed, compute
+from src.metrics.pytorch_metrics import divide_no_nan
 
 AVAILABLE_METRICS = ['mse', 'rmse', 'mape', 'smape', 'mase', 'rmsse',
                      'mini_owa', 'pinball_loss']
@@ -112,8 +113,10 @@ def smape(y, y_hat):
     ------
     scalar: SMAPE
     """
-    smape = np.mean(np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
-    smape = 200 * smape
+    delta_y = np.abs(y - y_hat)
+    scale = np.abs(y) + np.abs(y_hat)
+    smape = divide_no_nan(delta_y, scale)
+    smape = 200 * np.mean(smape)
 
     return smape
 
@@ -311,7 +314,7 @@ def evaluate_panel(y_test, y_hat, y_train,
 
     if metric_name in ['mase', 'rmsse']:
         y_train = y_train.set_index(['unique_id', 'ds'])
-        
+
     elif metric_name in ['mini_owa']:
         y_train = y_train.set_index(['unique_id', 'ds'])
         y_bench = y_bench.set_index(['unique_id', 'ds'])

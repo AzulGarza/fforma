@@ -27,9 +27,14 @@ GRID_QRA1 = {'model_type': ['qra'],
 
 GRID_FQRA1 = {'model_type': ['fqra'],
               'tau': [0.45, 0.5, 0.55],
-              'n_components': [1]} # for timeseries without insufficient obs 
+              'n_components': [1]} # for timeseries without insufficient obs
 
-GRID_FFORMA1 = {'model_type': ['fforma'],}
+GRID_FFORMA1 = {'model_type': ['fforma'],
+                'n_estimators': [5, 10, 20, 30],
+                'eta': [0.1, 0.25, 0.5, 0.6],
+                'max_depth': [5, 15, 20, 25],
+                'subsample': [0.8, 0.85, 0.9, 0.95],
+                'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8]}
 
 GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'n_epochs' : [5, 20, 50],
@@ -108,6 +113,7 @@ def read_data(dataset='M4'):
     X_test_df = data['X_test_df']
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
+    fforma_errors = data.get('fforma_errors', None)
 
     # Filter unique_ids with X_train_df unique_ids
     unique_ids = X_train_df['unique_id'].unique()
@@ -136,7 +142,8 @@ def read_data(dataset='M4'):
             'y_insample_df': y_insample_df,
             'X_test_df': X_test_df,
             'preds_test_df': preds_test_df,
-            'y_test_df': y_test_df}
+            'y_test_df': y_test_df,
+            'fforma_errors': fforma_errors}
 
     return data
 
@@ -156,9 +163,9 @@ def train(args):
     train_model[args.model](data, grid_dir, model_specs_df, args)
 
 def upload_to_s3(args, model_id, predictions, evaluation):
-    s3_dir ='{}/{}/'.format(args.model, args.dataset)
+    s3_dir ='{}/{}'.format(args.model, args.dataset)
 
-    pickle_preds = f's3://research-storage-orax/{s3_dir}/{model_id}.p'
+    pickle_preds = f's3://research-storage-orax/{s3_dir}/predictions/{model_id}.p'
     pickle_eval = f's3://research-storage-orax/{s3_dir}/evaluation-training/{model_id}.p'
 
     pd.to_pickle(predictions, pickle_preds)
@@ -168,10 +175,13 @@ def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
     if args.model in ['qra', 'fqra']:
-      y_hat_df = model.predict(preds_test_df)
+        y_hat_df = model.predict(preds_test_df)
 
-    elif args.model in ['fforma', 'qfforma']:
-      y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
+    elif args.model in ['qfforma']:
+        y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
+
+    elif args.model in ['fforma']:
+        y_hat_df = model.predict(X_test_df, base_model_preds=preds_test_df)
 
     y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
 
@@ -262,6 +272,35 @@ def train_fforma(data, grid_dir, model_specs_df, args):
     X_test_df = data['X_test_df']
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
+    errors = data['fforma_errors']
+
+    from meta_learner import MetaLearnerXGBoost
+
+    for i in range(args.start_id, args.end_id):
+
+        mc = model_specs_df.loc[i, :]
+
+        print(47*'=' + '\n')
+        print('model_config: {}'.format(i))
+        print(mc)
+        print(47*'=' + '\n')
+
+        params = {'n_estimators': int(mc.n_estimators),
+                  'eta': mc.eta,
+                  'max_depth': int(mc.max_depth),
+                  'subsample': mc.subsample,
+                  'colsample_bytree': mc.colsample_bytree,
+                  'df_seasonality': None} # errors already calculated
+
+        model = MetaLearnerXGBoost(params)
+
+        model = model.fit(X_train_df,errors=errors, X_test_df=X_test_df,
+                          preds_test_df=preds_test_df,
+                          y_test_df=y_test_df[['unique_id', 'ds', 'y']])
+
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
+
 
 def train_qfforma(data, grid_dir, model_specs_df, args):
     # Parse data
