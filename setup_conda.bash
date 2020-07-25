@@ -29,7 +29,7 @@ conda install -c anaconda patsy==0.5.1
 pip install --user rstl
 pip install threadpoolctl # este porque?
 pip install seaborn
-pip install xgboost
+pip install xgboost==0.90
 pip install s3fs
 pip install boto3
 pip instal -U pandas

@@ -24,6 +24,13 @@ import time
 from tsfeatures.metrics import evaluate_panel
 from src.metrics.metrics import smape, mape
 
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=1
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=1
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=1
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=1
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=1
+
 freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
@@ -177,7 +184,7 @@ class FactorQuantileRegressionAveraging:
             params_models.append(param_model)
 
         with ProgressBar():
-            params_models = compute(*params_models)
+            params_models = compute(*params_models, scheduler='processes')
 
         params, models = zip(*params_models)
 
