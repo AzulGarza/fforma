@@ -33,6 +33,7 @@ conda install dask
 
 # visualization
 conda install -c conda-forge matplotlib==3.2.1
+conda install -c anaconda seaborn
 conda install -c conda-forge tqdm==4.46.0
 
 conda install -c conda-forge jupyterlab
