@@ -155,6 +155,29 @@ def upload_to_s3(args, model_id, predictions, evaluation):
     pd.to_pickle(predictions, pickle_preds)
     pd.to_pickle(evaluation, pickle_eval)
 
+def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
+    if args.model in ['qra', 'fqra']:
+      y_hat_df = model.predict(preds_test_df, y_test_df)
+    
+    elif args.model in ['fforma', 'qfforma']:
+      y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
+
+    y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
+
+    evaluation_dict = {'model_id': mc.model_id,
+                        'train_loss': model.train_loss,
+                        'test_min_smape': model.test_min_smape,
+                        'test_min_mape': model.test_min_mape}
+
+    results_df = pd.DataFrame(evaluation_dict, index=[0])
+
+    # Output evaluation
+    if args.upload:
+        mc_df = pd.DataFrame(mc.to_dict(), index=[0])
+        results_df = mc_df.merge(results_df, how='left', on=['model_id'])
+        upload_to_s3(args, mc.model_id, y_hat_df, results_df)
+
+
 #############################################################################
 # TRAIN CODE
 #############################################################################
@@ -169,6 +192,10 @@ def train_qra(data, grid_dir, model_specs_df, args):
     X_test_df = data['X_test_df']
     preds_test_df = data['preds_test_df']
     y_test_df = data['y_test_df']
+
+    # Predict and Evaluate
+    assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+    predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
 def train_fqra(data, grid_dir, model_specs_df, args):
     # Parse data
@@ -250,42 +277,10 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         model.fit(X_train_df, preds_train_df, y_train_df,
                   X_test_df, preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
 
-        print('Predicting in test...')
+        # Predict and Evaluate
         assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
-        y_hat_df = model.predict(X_test_df, preds_test_df, y_test_df)
-
-        y_hat_df = y_hat_df[['unique_id', 'ds', 'y_hat']]
-
-        # # Infer seasonalities
-        # seasonalities = y_test_df.groupby('unique_id')['ds'].apply(lambda x: pd.infer_freq(x))
-        # seasonalities = seasonalities.rename('freq').reset_index()
-        # seasonalities['seasonality'] = seasonalities['freq'].replace(DICT_FREQS)
-        # assert seasonalities['seasonality'].isnull().sum() == 0
-        # seasonalities = seasonalities.set_index('unique_id')
-        # seasonalities = seasonalities.to_dict()['seasonality']
-
-        # print('Computing owa...')
-        # model_owa, model_mase, model_smape = evaluate_model_prediction(y_train_df=y_insample_df,
-        #                                                                outputs_df=y_hat_df,
-        #                                                                seasonalities=seasonalities)
-
-        # print("OWA: {:03.3f}".format(model_owa))
-        # print("MASE: {:03.3f}".format(model_mase))
-        # print("SMAPE: {:03.3f}".format(model_smape))
-
-        evaluation_dict = {'model_id': mc.model_id,
-                           'train_loss': model.meta_learner.train_loss,
-                           'test_min_smape': model.meta_learner.test_min_smape,
-                           'test_min_mape': model.meta_learner.test_min_mape}
-
-        results_df = pd.DataFrame(evaluation_dict, index=[0])
-
-        # Output evaluation
-        if args.upload:
-            mc_df = pd.DataFrame(mc.to_dict(), index=[0])
-            results_df = mc_df.merge(results_df, how='left', on=['model_id'])
-            upload_to_s3(args, mc.model_id, y_hat_df, results_df)
 
 #############################################################################
 # MAIN

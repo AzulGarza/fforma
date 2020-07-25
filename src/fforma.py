@@ -81,8 +81,11 @@ class FFORMA(object):
         self.meta_learner.fit(X_train_df, preds_train_df, y_train_df,
                               X_test_df, preds_test_df, y_test_df,
                               verbose=verbose)
-        self._fitted = True
 
+        self.train_loss = self.meta_learner.train_loss
+        self.test_min_smape = self.meta_learner.test_min_smape
+        self.test_min_mape = self.meta_learner.test_min_mape
+        self._fitted = True
         return self
 
 
