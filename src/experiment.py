@@ -36,6 +36,21 @@ GRID_FFORMA1 = {'model_type': ['fforma'],
                 'subsample': [0.8, 0.85, 0.9, 0.95],
                 'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8]}
 
+GRID_QFFORMAM3 = {'model_type': ['qfforma'],
+                  'n_epochs' : [5, 10, 15],
+                  'lr': [1e-3, 5e-3, 7e-3],
+                  'batch_size': [64, 128],
+                  'gradient_eps': [1e-8],
+                  'weight_decay': [0],
+                 #'lr_scheduler_step_size': [10],
+                  'lr_decay': [0.0, 0.5, 1],
+                  'dropout': [0, 0.3, 0.5],
+                  'layers': ['[200, 100, 50, 25, 10]'],
+                  'use_softmax': [False, True],
+                  'train_percentile': [0.45, 0.48, 0.5, 0.53, 0.55],
+                  'display_step': [1],
+                  'random_seed': [1]}
+
 GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'n_epochs' : [5, 20, 50],
                  'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4, 1e-3, 5e-3, 7e-3, 1e-2, 5e-2],
@@ -76,8 +91,8 @@ ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                                'M3': GRID_FFORMA1,
                                'TOURISM': GRID_FFORMA1},
                     'qfforma': {'M4': GRID_QFFORMA2,
-                                'M3': GRID_QFFORMA1,
-                                'TOURISM': GRID_FFORMA1}}
+                                'M3': GRID_QFFORMAM3,
+                                'TOURISM': GRID_QFFORMA1}}
 
 #############################################################################
 # COMMON
