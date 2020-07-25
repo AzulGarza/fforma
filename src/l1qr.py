@@ -428,9 +428,9 @@ class L1QR:
         Returns:
             A Series with predictions for x.
         """
-        if s < min(self.s) or s > max(self.s):
-            raise ValueError(f's = {s} should be between '
-                             f'{min(self.s):.2f} and {max(self.s):.2f}.')
+        #if s < min(self.s) or s > max(self.s):
+        #    raise ValueError(f's = {s} should be between '
+        #                     f'{min(self.s):.2f} and {max(self.s):.2f}.')
 
         if set(self.b.columns) != set(x.columns):
             raise ValueError('The columns of b and x do not match!')

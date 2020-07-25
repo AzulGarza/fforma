@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import numpy as np
+np.warnings.filterwarnings('ignore')
 import pandas as pd
 import random
 from itertools import product
@@ -20,10 +21,23 @@ from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 import time
 
+from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import smape, mape
+
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=1
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=1
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=1
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=1
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=1
 
 freqs = {'Hourly': 24, 'Daily': 1,
          'Monthly': 12, 'Quarterly': 4,
          'Weekly':1, 'Yearly': 1}
+
+freqs_hyndman = {'H': 24, 'D': 1,
+                 'M': 12, 'Q': 4,
+                 'W':1, 'Y': 1}
 
 FREQ_DICT = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1, 'O': 1}
 
@@ -120,21 +134,13 @@ class FactorQuantileRegressionAveraging:
 
             assert cond_number < 1e15, f'Matrix of forecasts is ill-conditioned. {uid}\n{X.shape}'
 
-        opt_params_l = []
+        #print('y', y.shape, 'X', X.shape)
+        np.random.seed(1)
+        eps = np.random.normal(scale=0.05, size=y.shape)
+        opt_params = QuantReg(y, X).fit(self.tau).params
+        opt_params = dict(zip(cols, opt_params))
+        opt_params = pd.DataFrame(opt_params, index=[uid])
 
-        for tau in self.tau:
-            opt_params = QuantReg(y, X).fit(tau).params
-
-            opt_params = dict(zip(cols, opt_params))
-            tau = 100 * tau
-            tau = int(tau)
-            tau = 'p' + str(tau)
-            index = pd.MultiIndex.from_arrays([[uid], [tau]], names=('unique_id', 'quantile'))
-            opt_params = pd.DataFrame(opt_params, index=index)
-
-            opt_params_l.append(opt_params)
-
-        opt_params = pd.concat(opt_params_l)
         pca_model = pd.DataFrame({'model': pca_model}, index=[uid])
 
         return opt_params, pca_model
@@ -154,7 +160,7 @@ class FactorQuantileRegressionAveraging:
 
         return X
 
-    def fit(self, X_df, y_df):
+    def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
         X: pandas df
             Panel DataFrame with columns unique_id, ds, models to ensemble
@@ -162,8 +168,8 @@ class FactorQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        grouped_X = X_df.groupby('unique_id')
-        grouped_y = y_df.groupby('unique_id')
+        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
 
         partial_quantile_ts = partial(self._fit_quantile_ts,
                                       n_components=self.n_components,
@@ -178,12 +184,19 @@ class FactorQuantileRegressionAveraging:
             params_models.append(param_model)
 
         with ProgressBar():
-            params_models = compute(*params_models)
+            params_models = compute(*params_models, scheduler='processes')
 
         params, models = zip(*params_models)
 
-        self.weigths_ = pd.concat(params).fillna(0)
+        self.weigths_ = pd.concat(params).fillna(0).rename_axis('unique_id')
         self.models_ = pd.concat(models)
+
+        y_hat_df = self.predict(X_test_df)
+
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
 
         return self
 
@@ -195,7 +208,7 @@ class FactorQuantileRegressionAveraging:
                                               add_constant_x=self.add_constant_)
 
         X_transformed = []
-        for uid, X in X_df.groupby('unique_id'):
+        for uid, X in X_df.set_index(['unique_id', 'ds']).groupby('unique_id'):
             model = self.models_.loc[uid, 'model']
             transformed = delayed(partial_predict_quantile_ts)(model, X)
             X_transformed.append(transformed)
@@ -204,13 +217,9 @@ class FactorQuantileRegressionAveraging:
             X_transformed = compute(*X_transformed)
 
         X_transformed = pd.concat(X_transformed).fillna(0)
-
         y_hat = (self.weigths_ * X_transformed).sum(axis=1)
         y_hat.name = 'y_hat'
-        y_hat = y_hat.to_frame()
-
-        y_hat = y_hat.pivot_table(index=['unique_id','ds'], columns='quantile')
-        y_hat.columns = y_hat.columns.droplevel().rename(None)
+        y_hat = y_hat.to_frame().reset_index()
 
         return y_hat
 
@@ -227,14 +236,13 @@ class LassoQuantileRegressionAveraging:
         """
         y = y_df['y']
         X = X_df
-
         model = L1QR(y, X, tau).fit()
 
         model = pd.DataFrame({'model': model}, index=[uid])
 
         return model
 
-    def fit(self, X_df, y_df):
+    def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
         X: pandas df
             Panel DataFrame with columns unique_id, ds, models to ensemble
@@ -242,8 +250,8 @@ class LassoQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        grouped_X = X_df.groupby('unique_id')
-        grouped_y = y_df.groupby('unique_id')
+        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
 
         partial_quantile_ts = partial(self._fit_quantile_ts,
                                       tau=self.tau)
@@ -261,6 +269,12 @@ class LassoQuantileRegressionAveraging:
 
         self.models_ = pd.concat(models)
 
+        y_hat_df = self.predict(X_test_df)
+
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
 
         return self
 
@@ -270,7 +284,7 @@ class LassoQuantileRegressionAveraging:
         check_is_fitted(self, 'models_')
 
         y_hat = []
-        for uid, X in X_df.groupby('unique_id'):
+        for uid, X in X_df.set_index(['unique_id', 'ds']).groupby('unique_id'):
             model = self.models_.loc[uid, 'model']
             preds = delayed(model.predict)(X, self.penalty)
             y_hat.append(preds)
@@ -278,8 +292,7 @@ class LassoQuantileRegressionAveraging:
         with ProgressBar():
             y_hat = compute(*y_hat)
 
-        y_hat = pd.concat(y_hat).rename(f'p{int(100 * self.tau)}').to_frame()
-
+        y_hat = pd.concat(y_hat).rename('y_hat').to_frame().reset_index()
         return y_hat
 
 def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
@@ -313,30 +326,30 @@ def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
         res = res.reset_index(drop=True)
     return res
 
-def long_to_wide(long_df):
-    horizontal_df = pd.DataFrame(columns=long_df.columns)
-    cols_to_parse = list(set(long_df.columns)-set(['unique_id']))
-    long_df = long_df.sort_values(['unique_id','ds']).reset_index(drop=True)
-    unique_ids = long_df['unique_id'].unique()
-    n_series = len(unique_ids)
-    max_len = long_df.groupby('unique_id')['ds'].count().max()
-
-    dict_df = {'unique_id':unique_ids,
-               'ds':list(range(1, max_len+1))}
-    padding_dict = list(product(*list(dict_df.values())))
-    padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
-    df_padded = padding_dict.merge(long_df, on=['unique_id','ds'], how='outer')
-    df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
-
+def long_to_wide_uid(uid, df, full_columns, cols_to_parse):
+    horizontal_df = pd.DataFrame(columns=full_columns)
     for col in cols_to_parse:
-        values = df_padded[col].values
-        values = values.reshape((n_series, max_len))
-        values = values.tolist()
-        horizontal_df[col] = values
-
-    horizontal_df['unique_id'] = unique_ids
+        horizontal_df[col] = [df[col].values]
+    horizontal_df['unique_id'] = uid
 
     return horizontal_df
+
+def long_to_wide(long_df, threads=None):
+
+    if threads is None:
+        threads = mp.cpu_count()
+
+    cols_to_parse = set(long_df.columns) - {'unique_id'}
+    partial_long_to_wide_uid = partial(long_to_wide_uid,
+                                       full_columns=long_df.columns,
+                                       cols_to_parse=cols_to_parse)
+
+    with mp.Pool(threads) as pool:
+        wide_df = pool.starmap(partial_long_to_wide_uid, long_df.groupby('unique_id'))
+
+    wide_df = pd.concat(wide_df).reset_index(drop=True)
+
+    return wide_df
 
 def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     _, y_train_df, X_test_df, y_test_df = prepare_m4_data(dataset_name=dataset_name,
@@ -361,7 +374,6 @@ def evaluate_forecasts(dataset_name, panel_df, directory, num_obs):
     evaluation = pd.DataFrame(evaluation, index=[dataset_name])
 
     return evaluation
-
 
 def evaluate_model_prediction(y_train_df, outputs_df, seasonalities):
     """
@@ -423,74 +435,78 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
     model_smape = np.mean(total_smape) * 100
 
     model_owa = ((model_mase/naive2_mase) + (model_smape/naive2_smape))/2
+
     return model_owa, model_mase, model_smape
 
 
-def evaluate_panel(y_panel, y_hat_panel, metric,
-                   y_insample=None, seasonalities=None):
-    """
-    Calculates metric for y_panel and y_hat_panel
-    y_panel: pandas df
-    panel with columns unique_id, ds, y
-    y_naive2_panel: pandas df
-    panel with columns unique_id, ds, y_hat
-    y_insample: pandas df
-    panel with columns unique_id, ds, y (train)
-    this is used in the MASE
-    seasonality: int
-    main frequency of the time series
-    Quarterly 4, Daily 7, Monthly 12
-    return: list of metric evaluations
-    """
-    metric_name = metric.__code__.co_name
+# def evaluate_panel(y_panel, y_hat_panel, metric,
+#                    y_insample=None, seasonalities=None):
+#     """
+#     Calculates metric for y_panel and y_hat_panel
+#     y_panel: pandas df
+#     panel with columns unique_id, ds, y
+#     y_naive2_panel: pandas df
+#     panel with columns unique_id, ds, y_hat
+#     y_insample: pandas df
+#     panel with columns unique_id, ds, y (train)
+#     this is used in the MASE
+#     seasonality: int
+#     main frequency of the time series
+#     Quarterly 4, Daily 7, Monthly 12
+#     return: list of metric evaluations
+#     """
+#     metric_name = metric.__code__.co_name
+#
+#     y_panel = y_panel.sort_values(['unique_id', 'ds'])
+#     y_hat_panel = y_hat_panel.sort_values(['unique_id', 'ds'])
+#     if y_insample is not None:
+#         y_insample = y_insample.sort_values(['unique_id', 'ds'])
+#
+#     assert len(y_panel)==len(y_hat_panel)
+#     assert all(y_panel.unique_id.unique() == y_hat_panel.unique_id.unique()), "not same u_ids"
+#
+#     evaluation = []
+#     for u_id in y_panel.unique_id.unique():
+#         top_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'left'))
+#         bottom_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'right'))
+#         y_id = y_panel[top_row:bottom_row].y.to_numpy()
+#
+#         top_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'left'))
+#         bottom_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'right'))
+#         y_hat_id = y_hat_panel[top_row:bottom_row].y_hat.to_numpy()
+#         assert len(y_id)==len(y_hat_id)
+#
+#         if metric_name == 'mase':
+#             assert (y_insample is not None) and (seasonalities is not None)
+#             #seasonality = seasonalities[u_id]
+#             freq = u_id[0]
+#             seasonality = FREQ_DICT[freq]
+#
+#             top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
+#             bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
+#             y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
+#             evaluation_id = delayed(metric)(y_id, y_hat_id, y_insample_id, seasonality)
+#         else:
+#             evaluation_id = delayed(metric)(y_id, y_hat_id)
+#         evaluation.append(evaluation_id)
+#
+#     with ProgressBar():
+#         evaluation = compute(*evaluation)
+#     return evaluation
 
-    y_panel = y_panel.sort_values(['unique_id', 'ds'])
-    y_hat_panel = y_hat_panel.sort_values(['unique_id', 'ds'])
-    if y_insample is not None:
-        y_insample = y_insample.sort_values(['unique_id', 'ds'])
-
-    assert len(y_panel)==len(y_hat_panel)
-    assert all(y_panel.unique_id.unique() == y_hat_panel.unique_id.unique()), "not same u_ids"
-
-    evaluation = []
-    for u_id in y_panel.unique_id.unique():
-        top_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'left'))
-        bottom_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'right'))
-        y_id = y_panel[top_row:bottom_row].y.to_numpy()
-
-        top_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'left'))
-        bottom_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'right'))
-        y_hat_id = y_hat_panel[top_row:bottom_row].y_hat.to_numpy()
-        assert len(y_id)==len(y_hat_id)
-
-        if metric_name == 'mase':
-            assert (y_insample is not None) and (seasonalities is not None)
-            #seasonality = seasonalities[u_id]
-            freq = u_id[0]
-            seasonality = FREQ_DICT[freq]
-
-            top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
-            bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
-            y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
-            evaluation_id = metric(y_id, y_hat_id, y_insample_id, seasonality)
-        else:
-            evaluation_id = metric(y_id, y_hat_id)
-        evaluation.append(evaluation_id)
-    return evaluation
-
-def smape(y, y_hat):
-    """
-    Calculates Symmetric Mean Absolute Percentage Error.
-    y: numpy array
-    actual test values
-    y_hat: numpy array
-    predicted values
-    return: sMAPE
-    """
-    y = np.reshape(y, (-1,))
-    y_hat = np.reshape(y_hat, (-1,))
-    smape = np.mean(2.0 * np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
-    return smape
+# def smape(y, y_hat):
+#     """
+#     Calculates Symmetric Mean Absolute Percentage Error.
+#     y: numpy array
+#     actual test values
+#     y_hat: numpy array
+#     predicted values
+#     return: sMAPE
+#     """
+#     y = np.reshape(y, (-1,))
+#     y_hat = np.reshape(y_hat, (-1,))
+#     smape = np.mean(2.0 * np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat)))
+#     return smape
 
 def mase(y, y_hat, y_train, seasonality):
     """

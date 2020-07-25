@@ -1,12 +1,21 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
+import requests
+
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
 from copy import deepcopy
 from src.utils import long_to_wide, wide_to_long
-from tsfeatures.metrics import smape, mase, evaluate_panel
+from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import smape, mape, mase
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
+
+META_URL = 'https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/'
 
 ###############################################################################
 ########## UTILS FOR FFORMA FLOW
@@ -126,6 +135,57 @@ def calc_errors_widing(preds_df, y_panel_df, y_insample_df, seasonality, benchma
 
     return errors
 
+def calc_errors_wide(y_panel_wide_df, y_hat_col='y_hat'):
+    """
+    y_panel_wide_df: pandas DF
+        columns ['unique_id', 'seasonality', 'y_insample', 'y_test']
+
+    returns smape and mase
+    """
+
+    uids = []
+    metrics = []
+    losses = []
+
+    for uid, df in y_panel_wide_df.groupby('unique_id'):
+        seasonality = df['seasonality'].item()
+        y_insample = df['y_insample'].item()
+        y_test = df['y_test'].item()
+        y_hat = df[y_hat_col].item()
+
+        loss_smape = delayed(smape)(y_test, y_hat)
+        uids.append(uid)
+        metrics.append(f'smape_{y_hat_col}')
+        losses.append(loss_smape)
+
+        loss_mase = delayed(mase)(y_test, y_hat, y_insample, seasonality)
+        uids.append(uid)
+        metrics.append(f'mase_{y_hat_col}')
+        losses.append(loss_mase)
+
+    with ProgressBar():
+        losses = compute(*losses)
+
+    dict_losses = {'unique_id': uids, 'metric': metrics, 'loss': losses}
+    df_losses = pd.DataFrame.from_dict(dict_losses)
+    df_losses = df_losses.set_index(['unique_id', 'metric']).unstack()
+    df_losses.columns = df_losses.columns.droplevel(0).rename('')
+    df_losses = df_losses.reset_index()
+
+    return df_losses
+
+def smape_mase_naive2_from_long(y_insample_df, y_test_df):
+    y_insample_wide = long_to_wide(y_insample_df.drop('ds', 1)).rename(columns={'y': 'y_insample'})
+    y_test_wide = long_to_wide(y_test_df.drop('ds', 1)).rename(columns={'y': 'y_test'})
+
+    complete_wide = y_insample_wide.merge(y_test_wide, how='left', on=['unique_id'])
+    complete_wide['seasonality'] = complete_wide['unique_id'].apply(lambda x: FREQ_DICT[x[0]])
+
+    errors = calc_errors_wide(complete_wide, 'y_hat_naive2')
+    complete_wide = complete_wide.merge(errors, how='left', on=['unique_id'])
+
+    return complete_wide
+
 def evaluate_wide_panel(wide_panel, metric, remove_na=True):
 
     metric_name = metric.__name__
@@ -152,14 +212,17 @@ def evaluate_wide_panel(wide_panel, metric, remove_na=True):
 
             seasonality = df['seasonality'].item()
 
-            loss = metric(y=y_test, y_hat=y_hat,
-                          y_train=y_train,
-                          seasonality=seasonality)
+            loss = delayed(metric)(y=y_test, y_hat=y_hat,
+                                   y_train=y_train,
+                                   seasonality=seasonality)
         else:
-            loss = metric(y_test, y_hat)
+            loss = delayed(metric)(y_test, y_hat)
 
         losses.append(loss)
         uids.append(uid)
+
+    with ProgressBar():
+        losses = compute(*losses)
 
     loss_panel = [uids, losses]
     loss_panel = zip(*loss_panel)
@@ -169,6 +232,57 @@ def evaluate_wide_panel(wide_panel, metric, remove_na=True):
 
     return loss_panel
 
+def evaluate_fforma_experiment(long_preds, directory, kind='M4'):
+    filepath = f'{directory}/{kind}_errors_naive2.p'
+
+    if not os.path.exists(filepath):
+        filename = filepath.split('/')[-1]
+        URL = META_URL + filename
+        r = requests.get(URL, stream=True)
+        # Total size in bytes.
+        total_size = int(r.headers.get('content-length', 0))
+        block_size = 1024 #1 Kibibyte
+        t = tqdm(total=total_size, unit='iB', unit_scale=True)
+
+        with open(filepath, 'wb') as f:
+            for data in r.iter_content(block_size):
+                t.update(len(data))
+                f.write(data)
+
+        t.close()
+
+        if total_size != 0 and t.n != total_size:
+            print("ERROR, something went wrong")
+
+        size = os.path.getsize(filepath)
+        print('Successfully downloaded', filename, size, 'bytes.')
+
+    errors_naive2 = pd.read_pickle(filepath)
+
+    #predictions
+    predictions = long_preds.groupby('unique_id')['y_hat'].apply(list).to_frame().reset_index()
+
+    #Preparing to evaluation
+    complete_data = predictions.merge(errors_naive2, how='left', on=['unique_id'])
+    errors = calc_errors_wide(complete_data)
+    errors = complete_data.merge(errors, how='left', on=['unique_id'])
+
+    errors = errors.loc[:, errors.columns.str.contains('mase|smape')]
+    errors = errors.mean().to_dict()
+    errors = pd.DataFrame(errors, index=[0])
+
+    for metric in ['mase', 'smape']:
+        errors[f'{metric}_rel'] = errors[f'{metric}_y_hat'] / errors[f'{metric}_y_hat_naive2']
+
+    errors['owa'] = 0.5 * (errors['mase_rel'] + errors['smape_rel'])
+
+    model_owa, model_mase, model_smape = [errors[col].item() for col in ('owa', 'mase_y_hat', 'smape_y_hat')]
+
+    print("OWA: {:03.3f}".format(model_owa))
+    print("MASE: {:03.3f}".format(model_mase))
+    print("SMAPE: {:03.3f}".format(100 * model_smape))
+
+    return errors
 
 def get_prediction_panel(y_panel_df, h, freq):
     """Constructs panel to use with

@@ -4,11 +4,13 @@
 import time
 import torch
 import itertools
+import torch as t
 import torch.nn as nn
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
 import multiprocessing as mp
+import xgboost as xgb
 
 from copy import deepcopy
 from tqdm import tqdm
@@ -19,9 +21,15 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
 from src.meta_evaluation import calc_errors_widing
-from src.metrics.pytorch_metrics import SMAPE1Loss
+from tsfeatures.metrics import evaluate_panel
+from src.metrics.metrics import mape, smape
+from src.metrics.pytorch_metrics import WeightedSMAPE2Loss, WeightedMAPELoss
 
-class MetaLearner(object):
+##############################################################################
+# FFORMA
+##############################################################################
+
+class MetaLearnerXGBoost(object):
     """Feature-based Forecast Model Averaging (FFORMA).
 
 
@@ -62,10 +70,16 @@ class MetaLearner(object):
         if threads is None:
             threads = mp.cpu_count()
 
+        #init_params = {
+        #    'objective': 'multiclass',
+        #    'nthread': threads,
+        #    'seed': random_seed
+        #}
         init_params = {
-            'objective': 'multiclass',
+            'objective': 'multi:softprob',
             'nthread': threads,
-            'seed': random_seed
+            'seed': random_seed,
+            'disable_default_eval_metric': 1
         }
 
         self.params = {**params, **init_params}
@@ -78,16 +92,17 @@ class MetaLearner(object):
         y = dtrain.get_label().astype(int)
         n_train = len(y)
         preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        preds_transformed = softmax(preds, axis=1)
+                          self.contribution_to_error[y, :].shape)#,
+                          #order='F')
+        #preds_transformed = softmax(preds, axis=1)
+        preds_transformed = preds
 
         weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1).reshape((n_train, 1))
 
         grad = preds_transformed * (self.contribution_to_error[y, :] - weighted_avg_loss_func)
         hess = self.contribution_to_error[y,:] * preds_transformed * (1.0 - preds_transformed) - grad * preds_transformed
         #hess = grad*(1 - 2*preds_transformed)
-        return grad.flatten('F'), hess.flatten('F')
+        return grad.flatten(), hess.flatten() #grad.flatten('F'), hess.flatten('F')
 
     def feval(self, predt, dtrain):
         """
@@ -95,15 +110,28 @@ class MetaLearner(object):
         y = dtrain.get_label().astype(int)
         n_train = len(y)
         preds = np.reshape(predt,
-                          self.contribution_to_error[y, :].shape,
-                          order='F')
-        preds_transformed = softmax(preds, axis=1)
+                          self.contribution_to_error[y, :].shape)#,
+                          #order='F')
+        #preds_transformed = softmax(preds, axis=1)
+        preds_transformed = preds
         weighted_avg_loss_func = (preds_transformed * self.contribution_to_error[y, :]).sum(axis=1)
         fforma_loss = weighted_avg_loss_func.mean()
 
-        return 'FFORMA-loss', fforma_loss, False
+        return 'FFORMA-loss', fforma_loss#, False
 
-    def fit(self, X_train_df, preds_train_df, y_train_df, y_insample_df, verbose=True):
+    def calc_errors(self, preds_df, y_panel_df, y_insample_df):
+        errors = calc_errors_widing(preds_df=preds_df,
+                                    y_panel_df=y_panel_df,
+                                    y_insample_df=y_insample_df,
+                                    seasonality=self.df_seasonality,
+                                    benchmark_model=self.benchmark_model)
+
+        return errors
+
+    def fit(self, X_train_df, preds_train_df=None,
+            y_train_df=None, y_insample_df=None, verbose=True,
+            errors=None, X_test_df=None, preds_test_df=None,
+            y_test_df=None):
         """Fits FFORMA.
 
 
@@ -127,11 +155,12 @@ class MetaLearner(object):
         features = X_train_df.set_index('unique_id').values
 
         print('Calculating errors...')
-        errors = calc_errors_widing(preds_df=preds_train_df,
-                                    y_panel_df=y_train_df,
-                                    y_insample_df=y_insample_df,
-                                    seasonality=self.df_seasonality,
-                                    benchmark_model=self.benchmark_model)
+        if errors is None:
+            errors = self.calc_errors(preds_df=preds_train_df,
+                                      y_panel_df=y_train_df,
+                                      y_insample_df=y_insample_df)
+        else:
+            errors = errors.set_index('unique_id')
 
         best_models_count = errors.idxmin(axis=1).value_counts()
         best_models_count = pd.Series(best_models_count, index=errors.columns)
@@ -162,20 +191,37 @@ class MetaLearner(object):
 
         params['num_class'] = len(np.unique(best_models))
 
-        dtrain = lgb.Dataset(data=feats_train, label=indices_train)
-        dvalid = lgb.Dataset(data=feats_val, label=indices_val)
-        valid_sets = [dtrain, dvalid]
+        #dtrain = lgb.Dataset(data=feats_train, label=indices_train)
+        #dvalid = lgb.Dataset(data=feats_val, label=indices_val)
+        dtrain = xgb.DMatrix(data=feats_train, label=indices_train)
+        dvalid = xgb.DMatrix(data=feats_val, label=indices_val)
+        #valid_sets = [dtrain, dvalid]
+        valid_sets = [(dtrain, 'train'), (dvalid, 'valid')]
 
-        self.gbm_model_ = lgb.train(
+        self.gbm_model_ = xgb.train(
             params=params,
-            train_set=dtrain,
-            fobj=self.fobj,
+            #train_set=dtrain,
+            dtrain=dtrain,
+            #fobj=self.fobj,
+            obj=self.fobj,
             num_boost_round=num_round,
             feval=self.feval,
-            valid_sets=valid_sets,
+            #valid_sets=valid_sets,
+            evals=valid_sets,
             early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=verbose
         )
+
+        y_hat_df = self.predict(X_test_df,
+                                base_model_preds=preds_test_df)
+
+        y_hat_df = y_hat_df.sort_values(['unique_id', 'ds'])
+        y_test_df = y_test_df.sort_values(['unique_id', 'ds'])
+
+        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                             y_train=None, metric=smape)['error'].mean()
+        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                            y_train=None, metric=mape)['error'].mean()
 
         return self
 
@@ -209,8 +255,8 @@ class MetaLearner(object):
                                                              val_df=X_df)
         features = X_df.set_index('unique_id')
 
-        scores = self.gbm_model_.predict(features.values, raw_score=True)
-        weights = softmax(scores / tmp, axis=1)
+        scores = self.gbm_model_.predict(xgb.DMatrix(features.values))#, raw_score=True)
+        weights = scores #softmax(scores / tmp, axis=1)
 
         base_model_preds = base_model_preds.set_index(['unique_id', 'ds'])
 
@@ -225,9 +271,13 @@ class MetaLearner(object):
         y_hat_df = y_hat_df.reset_index()
 
         return y_hat_df
+
 ##############################################################################
-################### CUSTOM
+# QFFORMA
 ##############################################################################
+
+LOSS_DICT = {'smape': WeightedSMAPE2Loss(),
+             'mape': WeightedMAPELoss()}
 
 class NeuralNetwork(nn.Module):
 
@@ -323,7 +373,23 @@ class MetaLearnerNN(object):
 
         return X, y, preds, horizons, max_horizon, n_models
 
-    def fit(self, X_df, preds_df, y_df, verbose=True):
+    def evaluate_performance(self, dataloader, metric):
+        self.model.eval()
+        with torch.no_grad():
+            losses = []
+            for batch in dataloader:
+                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, batch)
+                batch_weights = 1 / batch_h
+                batch_weights = batch_weights.flatten()
+                batch_y_hat = self.model(batch_x, batch_preds)
+                loss = LOSS_DICT[metric](batch_y, batch_y_hat, batch_weights)
+                losses.append(loss.cpu().data.numpy())
+        avg_loss = np.mean(losses)
+        return avg_loss
+
+    def fit(self, X_df, preds_df, y_df,
+            X_df_test=None, preds_df_test=None, y_df_test=None,
+            verbose=True):
         """
         Parameters
         ----------
@@ -344,6 +410,14 @@ class MetaLearnerNN(object):
         self.max_horizon = max_horizon
         self.n_models = n_models
 
+        #preprocessing test set
+        if X_df_test is not None:
+            preds_df_test = preds_df_test.merge(y_df_test, on=['unique_id','ds'], how='outer')
+            padded_df_test, horizons_test = self.pad_long_df(preds_df_test)
+
+            X_test, y_test, preds_test, horizons_test, *_ = self.prepare_datasets_for_model(X_df_test, padded_df_test, horizons_test)
+
+        #SETTING model
         loss = self.params['loss_function']
 
         self.model = NeuralNetwork(num_numerical_cols=X.size()[1],
@@ -366,6 +440,12 @@ class MetaLearnerNN(object):
         train_data = torch.utils.data.TensorDataset(X, y, preds, horizons)
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=self.params['batch_size'])
 
+        if X_df_test is not None:
+            test_data = torch.utils.data.TensorDataset(X_test, y_test, preds_test, horizons_test)
+            test_loader = torch.utils.data.DataLoader(test_data, batch_size=len(test_data))
+
+        self.test_min_smape = 100.0
+        self.test_min_mape = 100.0
         for epoch in range(self.params['n_epochs']):
             self.model.train()
             start = time.time()
@@ -373,12 +453,8 @@ class MetaLearnerNN(object):
             for i, data in enumerate(train_loader):
                 batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
 
-                # batch_x = batch_x.to(self.params['device'])
-                # batch_y = batch_y.to(self.params['device'])
-                # batch_preds = batch_preds.to(self.params['device'])
-                # batch_h = batch_h.to(self.params['device'])
-
                 batch_weights = 1/batch_h
+                batch_weights = batch_weights.flatten()
 
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
@@ -390,13 +466,23 @@ class MetaLearnerNN(object):
 
             # Decay learning rate
             lr_scheduler.step()
-
             self.train_loss = np.mean(epoch_losses)
 
-            if verbose:
+            if verbose and (epoch % self.params['display_step'] == 0):
+                test_mape = self.evaluate_performance(test_loader, 'mape')
+                test_smape = self.evaluate_performance(test_loader, 'smape')
+
+                if test_mape < self.test_min_mape:
+                    self.test_min_mape = test_mape
+
+                if test_smape < self.test_min_smape:
+                    self.test_min_smape = test_smape
+
                 print("Epoch:", '%d,' % (epoch + 1),
                       "Time: {:03.3f},".format(time.time()-start),
-                      "Loss: {:.4f}".format(self.train_loss))
+                      "Loss: {:.4f},".format(self.train_loss),
+                      "Test SMAPE: {:.4f},".format(test_smape),
+                      "Test MAPE: {:.4f}".format(test_mape))
 
         return self
 
