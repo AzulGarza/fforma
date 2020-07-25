@@ -63,7 +63,7 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'layers': ['[100]', '[100, 50]', '[200, 100, 50, 25, 10]'],
                  'use_softmax': [False, True],
                  'train_percentile': [0.4, 0.5, 0.6],
-                 'display_step': [5],
+                 'display_step': [1],
                  'random_seed': [1]}
 
 GRID_QFFORMA2 = {'model_type': ['qfforma'],
