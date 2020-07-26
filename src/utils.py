@@ -5,7 +5,7 @@ import numpy as np
 np.warnings.filterwarnings('ignore')
 import pandas as pd
 import random
-from itertools import product
+from itertools import product, chain
 from functools import partial
 from statsmodels.api import add_constant
 from statsmodels.regression.quantile_regression import QuantReg
@@ -18,6 +18,7 @@ from src.l1qr import L1QR
 from ESRNN.m4_data import prepare_m4_data
 from ESRNN.utils_evaluation import evaluate_prediction_owa
 from dask import delayed, compute
+import dask.dataframe as dd
 from dask.diagnostics import ProgressBar
 import time
 
@@ -134,9 +135,6 @@ class FactorQuantileRegressionAveraging:
 
             assert cond_number < 1e15, f'Matrix of forecasts is ill-conditioned. {uid}\n{X.shape}'
 
-        #print('y', y.shape, 'X', X.shape)
-        np.random.seed(1)
-        eps = np.random.normal(scale=0.05, size=y.shape)
         opt_params = QuantReg(y, X).fit(self.tau).params
         opt_params = dict(zip(cols, opt_params))
         opt_params = pd.DataFrame(opt_params, index=[uid])
@@ -160,6 +158,21 @@ class FactorQuantileRegressionAveraging:
 
         return X
 
+    def batch(self, full_df, n_components, add_constant_x):
+
+        params, pca_models = [], []
+
+        for uid, df in full_df.groupby('unique_id'):
+            y = df[['y']]
+            X = df.drop(columns=['ds', 'y'])
+            param, pca_model = self._fit_quantile_ts(uid, X, y,
+                                                     n_components,
+                                                     add_constant_x)
+            params.append(param)
+            pca_models.append(pca_model)
+
+        return params, pca_models
+
     def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
         X: pandas df
@@ -168,25 +181,25 @@ class FactorQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
-        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        #grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        #grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        full_df = X_df.merge(y_df, how='left', on=['unique_id', 'ds'])
+        full_df = full_df.set_index('unique_id')
 
-        partial_quantile_ts = partial(self._fit_quantile_ts,
-                                      n_components=self.n_components,
-                                      add_constant_x=self.add_constant_)
+        parts = mp.cpu_count() - 1
+        full_df_dask = dd.from_pandas(full_df, npartitions=parts)
+        full_df_dask = full_df_dask.to_delayed()
 
-        uids = list(grouped_y.groups.keys())
+        batch = partial(self.batch, n_components=self.n_components,
+                        add_constant_x=self.add_constant_)
 
-        params_models = []
-        for uid in uids:
-            X, y = grouped_X.get_group(uid), grouped_y.get_group(uid)
-            param_model = delayed(partial_quantile_ts)(uid, X, y)
-            params_models.append(param_model)
+        task = [delayed(batch)(part) for part in full_df_dask]
 
         with ProgressBar():
-            params_models = compute(*params_models, scheduler='processes')
+            params_models = compute(*task, scheduler='processes')
 
         params, models = zip(*params_models)
+        params, models = list(chain(*params)), list(chain(*models))
 
         self.weigths_ = pd.concat(params).fillna(0).rename_axis('unique_id')
         self.models_ = pd.concat(models)
