@@ -65,6 +65,52 @@ def evaluate_panel(y_panel, y_hat_panel, metric):
 # MEAN ENSEMBLE
 #############################################################################
 
+class MetaLearnerMean(object):
+    """Evaluates ensemble model on the fly using neural networks.
+
+    Parameters
+    ----------
+    actual_y: numpy array
+        Actual values of the time series.
+        Numpy array of size N * h
+    preds_y_val: numpy array
+        Model predictions to ensemble.
+        Numpy array of size N * h * m.
+    h: int
+        Horizon of the validation set.
+    weights: numpy array
+        Weighted errors.
+    loss_function: pytorch loss function
+
+    random_seed:
+
+    """
+    def __init__(self, params):
+        pass
+
+    def fit(self, preds_df_test=None, y_df_test=None, verbose=True):
+        
+        y_hat_df = preds_df_test[['unique_id', 'ds']]
+        y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).mean(axis=1)
+
+        self.test_min_smape = evaluate_panel(y_panel=y_df_test,
+                                             y_hat_panel=y_hat_df,
+                                             metric=smape)
+
+        self.test_min_mape = evaluate_panel(y_panel=y_df_test,
+                                            y_hat_panel=y_hat_df,
+                                            metric=mape)
+
+        return self
+
+    def predict(self, preds_df_test):
+        y_hat_df = preds_df_test[['unique_id', 'ds']]
+        y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).mean(axis=1)
+
+        return y_hat_df
+
+
+
 
 #############################################################################
 # FQRA

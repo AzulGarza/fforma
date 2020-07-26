@@ -127,7 +127,14 @@ GRID_QFFORMA4 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma4']}
 
-ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
+QRID_NAIVE = {'model_type': ['mean_ensemble'],
+              'param' : ['soy un placeholder'],
+              'grid_id': ['grid_naive']}
+
+ALL_MODEL_SPECS  = {'naive': {'M4': QRID_NAIVE,
+                            'M3': QRID_NAIVE,
+                            'TOURISM': QRID_NAIVE},
+                    'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
                             'TOURISM': GRID_QRA1},
                     'fqra': {'M4': GRID_FQRA1,
@@ -234,7 +241,8 @@ def read_data(dataset='M4'):
     return data
 
 def train(args):
-    train_model = {'qra': train_qra,
+    train_model = {'naive': train_mean_ensemble,
+                   'qra': train_qra,
                    'fqra': train_fqra,
                    'fforma': train_fforma,
                    'qfforma': train_qfforma}
@@ -260,7 +268,7 @@ def upload_to_s3(args, model_id, predictions, evaluation):
 def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
-    if args.model in ['qra', 'fqra']:
+    if args.model in ['qra', 'fqra', 'naive']:
         y_hat_df = model.predict(preds_test_df)
 
     elif args.model in ['qfforma']:
@@ -451,6 +459,39 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
         predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
+def train_mean_ensemble(data, grid_dir, model_specs_df, args):
+    # Parse data
+    data_file = './data/experiment/{}_pickle.p'.format(args.dataset)
+    data = pd.read_pickle(data_file)
+
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+    from benchmarks import MetaLearnerMean
+
+    for i in range(args.start_id, args.end_id):
+
+        mc = model_specs_df.loc[i, :]
+
+        print(47*'=' + '\n')
+        print('model_config: {}'.format(i))
+        print(mc)
+        print(47*'=' + '\n')
+
+        params = {}
+
+        model = MetaLearnerMean(params)
+
+        model = model.fit(preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
+
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
 #############################################################################
 # MAIN
@@ -477,5 +518,5 @@ if __name__ == '__main__':
         exit()
 
     assert args.dataset in ['TOURISM', 'M3', 'M4'], "Check if dataset {} is available".format(args.dataset)
-    assert args.model in ['qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
+    assert args.model in ['naive', 'qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
     train(args)
