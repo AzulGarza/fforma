@@ -21,8 +21,6 @@ from dask import delayed, compute
 import dask.dataframe as dd
 from dask.diagnostics import ProgressBar
 import time
-
-from tsfeatures.metrics import evaluate_panel
 from src.metrics.metrics import smape, mape
 
 import os
@@ -158,11 +156,11 @@ class FactorQuantileRegressionAveraging:
 
         return X
 
-    def batch(self, full_df, n_components, add_constant_x):
+    def batch_train(self, batch, n_components, add_constant_x):
 
         params, pca_models = [], []
 
-        for uid, df in full_df.groupby('unique_id'):
+        for uid, df in batch.groupby('unique_id'):
             y = df[['y']]
             X = df.drop(columns=['ds', 'y'])
             param, pca_model = self._fit_quantile_ts(uid, X, y,
@@ -181,8 +179,6 @@ class FactorQuantileRegressionAveraging:
             Panel Dataframe with columns unique_id, df, y
         """
 
-        #grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
-        #grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
         full_df = X_df.merge(y_df, how='left', on=['unique_id', 'ds'])
         full_df = full_df.set_index('unique_id')
 
@@ -190,10 +186,10 @@ class FactorQuantileRegressionAveraging:
         full_df_dask = dd.from_pandas(full_df, npartitions=parts)
         full_df_dask = full_df_dask.to_delayed()
 
-        batch = partial(self.batch, n_components=self.n_components,
+        batch_train = partial(self.batch_train, n_components=self.n_components,
                         add_constant_x=self.add_constant_)
 
-        task = [delayed(batch)(part) for part in full_df_dask]
+        task = [delayed(batch_train)(part) for part in full_df_dask]
 
         with ProgressBar():
             params_models = compute(*task, scheduler='processes')
@@ -206,10 +202,12 @@ class FactorQuantileRegressionAveraging:
 
         y_hat_df = self.predict(X_test_df)
 
-        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                             y_train=None, metric=smape)['error'].mean()
-        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                            y_train=None, metric=mape)['error'].mean()
+        self.test_min_smape = evaluate_panel(y_panel=y_test_df,
+                                             y_hat_panel=y_hat_df,
+                                             metric=smape)
+        self.test_min_mape = evaluate_panel(y_panel=y_test_df,
+                                            y_hat_panel=y_hat_df,
+                                            metric=mape)
 
         return self
 
@@ -242,18 +240,19 @@ class LassoQuantileRegressionAveraging:
         self.tau = tau
         self.penalty = penalty
 
-    def _fit_quantile_ts(self, uid, X_df, y_df, tau):
-        """
-        X: numpy array
-        y: numpy array
-        """
-        y = y_df['y']
-        X = X_df
-        model = L1QR(y, X, tau).fit()
+    def batch_train(self, batch, tau):
+        fitted_models = []
 
-        model = pd.DataFrame({'model': model}, index=[uid])
+        for uid, df in batch.groupby('unique_id'):
+            y = df['y']
+            X = df.drop(columns=['ds', 'y'])
 
-        return model
+            model = L1QR(y, X, tau).fit()
+            model = pd.DataFrame({'model': model}, index=[uid])
+
+            fitted_models.append(model)
+
+        return fitted_models
 
     def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
@@ -262,32 +261,32 @@ class LassoQuantileRegressionAveraging:
         y: pandas df
             Panel Dataframe with columns unique_id, df, y
         """
+        full_df = X_df.merge(y_df, how='left', on=['unique_id', 'ds'])
+        full_df = full_df.set_index('unique_id')
 
-        grouped_X = X_df.set_index(['unique_id', 'ds']).groupby('unique_id')
-        grouped_y = y_df.set_index(['unique_id', 'ds']).groupby('unique_id')
+        parts = mp.cpu_count() - 1
+        full_df_dask = dd.from_pandas(full_df, npartitions=parts)
+        full_df_dask = full_df_dask.to_delayed()
 
-        partial_quantile_ts = partial(self._fit_quantile_ts,
-                                      tau=self.tau)
+        batch_train = partial(self.batch_train, tau=self.tau)
 
-        uids = list(grouped_y.groups.keys())
-
-        models = []
-        for uid in uids:
-            X, y = grouped_X.get_group(uid), grouped_y.get_group(uid)
-            model = delayed(partial_quantile_ts)(uid, X, y)
-            models.append(model)
+        task = [delayed(batch_train)(part) for part in full_df_dask]
 
         with ProgressBar():
-            models = compute(*models, scheduler='processes')
+            models = compute(*task, scheduler='processes')
+
+        models = list(chain(*models))
 
         self.models_ = pd.concat(models)
 
         y_hat_df = self.predict(X_test_df)
 
-        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                             y_train=None, metric=smape)['error'].mean()
-        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                            y_train=None, metric=mape)['error'].mean()
+        self.test_min_smape = evaluate_panel(y_panel=y_test_df,
+                                             y_hat_panel=y_hat_df,
+                                             metric=smape)
+        self.test_min_mape = evaluate_panel(y_panel=y_test_df,
+                                            y_hat_panel=y_hat_df,
+                                            metric=mape)
 
         return self
 
@@ -451,61 +450,40 @@ def owa(y_panel, y_hat_panel, y_naive2_panel, y_insample, seasonalities):
 
     return model_owa, model_mase, model_smape
 
+def evaluate_batch(batch, metric):
 
-# def evaluate_panel(y_panel, y_hat_panel, metric,
-#                    y_insample=None, seasonalities=None):
-#     """
-#     Calculates metric for y_panel and y_hat_panel
-#     y_panel: pandas df
-#     panel with columns unique_id, ds, y
-#     y_naive2_panel: pandas df
-#     panel with columns unique_id, ds, y_hat
-#     y_insample: pandas df
-#     panel with columns unique_id, ds, y (train)
-#     this is used in the MASE
-#     seasonality: int
-#     main frequency of the time series
-#     Quarterly 4, Daily 7, Monthly 12
-#     return: list of metric evaluations
-#     """
-#     metric_name = metric.__code__.co_name
-#
-#     y_panel = y_panel.sort_values(['unique_id', 'ds'])
-#     y_hat_panel = y_hat_panel.sort_values(['unique_id', 'ds'])
-#     if y_insample is not None:
-#         y_insample = y_insample.sort_values(['unique_id', 'ds'])
-#
-#     assert len(y_panel)==len(y_hat_panel)
-#     assert all(y_panel.unique_id.unique() == y_hat_panel.unique_id.unique()), "not same u_ids"
-#
-#     evaluation = []
-#     for u_id in y_panel.unique_id.unique():
-#         top_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'left'))
-#         bottom_row = np.asscalar(y_panel['unique_id'].searchsorted(u_id, 'right'))
-#         y_id = y_panel[top_row:bottom_row].y.to_numpy()
-#
-#         top_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'left'))
-#         bottom_row = np.asscalar(y_hat_panel['unique_id'].searchsorted(u_id, 'right'))
-#         y_hat_id = y_hat_panel[top_row:bottom_row].y_hat.to_numpy()
-#         assert len(y_id)==len(y_hat_id)
-#
-#         if metric_name == 'mase':
-#             assert (y_insample is not None) and (seasonalities is not None)
-#             #seasonality = seasonalities[u_id]
-#             freq = u_id[0]
-#             seasonality = FREQ_DICT[freq]
-#
-#             top_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'left'))
-#             bottom_row = np.asscalar(y_insample['unique_id'].searchsorted(u_id, 'right'))
-#             y_insample_id = y_insample[top_row:bottom_row].y.to_numpy()
-#             evaluation_id = delayed(metric)(y_id, y_hat_id, y_insample_id, seasonality)
-#         else:
-#             evaluation_id = delayed(metric)(y_id, y_hat_id)
-#         evaluation.append(evaluation_id)
-#
-#     with ProgressBar():
-#         evaluation = compute(*evaluation)
-#     return evaluation
+    losses = []
+    for uid, df in batch.groupby('unique_id'):
+        y = df['y'].values
+        y_hat = df['y_hat'].values
+
+        loss = metric(y, y_hat)
+        losses.append(loss)
+
+    return losses
+
+def evaluate_panel(y_panel, y_hat_panel, metric):
+    """
+    """
+    metric_name = metric.__code__.co_name
+    y_df = y_panel.merge(y_hat_panel, how='left', on=['unique_id', 'ds'])
+    y_df = y_df.set_index('unique_id')
+
+    parts = mp.cpu_count() - 1
+    y_df_dask = dd.from_pandas(y_df, npartitions=parts).to_delayed()
+
+    evaluate_batch_p = partial(evaluate_batch, metric=metric)
+
+    task = [delayed(evaluate_batch_p)(part) for part in y_df_dask]
+
+    with ProgressBar():
+        losses = compute(*task)
+
+    losses = list(chain(*losses))
+
+    mean_loss = np.mean(losses)
+
+    return mean_loss
 
 # def smape(y, y_hat):
 #     """
