@@ -3,6 +3,8 @@
 
 import numpy as np
 np.warnings.filterwarnings('ignore')
+import warnings
+warnings.warn = lambda *a, **kw: False
 import pandas as pd
 import random
 from itertools import product, chain
@@ -187,7 +189,7 @@ class FactorQuantileRegressionAveraging:
         full_df_dask = full_df_dask.to_delayed()
 
         batch_train = partial(self.batch_train, n_components=self.n_components,
-                        add_constant_x=self.add_constant_)
+                              add_constant_x=self.add_constant_)
 
         task = [delayed(batch_train)(part) for part in full_df_dask]
 
