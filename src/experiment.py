@@ -131,9 +131,9 @@ QRID_NAIVE = {'model_type': ['mean_ensemble'],
               'param' : ['soy un placeholder'],
               'grid_id': ['grid_naive']}
 
-ALL_MODEL_SPECS  = {'naive': {'M4': QRID_NAIVE,
-                            'M3': QRID_NAIVE,
-                            'TOURISM': QRID_NAIVE},
+ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
+                                      'M3': QRID_NAIVE,
+                                      'TOURISM': QRID_NAIVE},
                     'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
                             'TOURISM': GRID_QRA1},
@@ -241,7 +241,7 @@ def read_data(dataset='M4'):
     return data
 
 def train(args):
-    train_model = {'naive': train_mean_ensemble,
+    train_model = {'mean_ensemble': train_mean_ensemble,
                    'qra': train_qra,
                    'fqra': train_fqra,
                    'fforma': train_fforma,
@@ -268,7 +268,7 @@ def upload_to_s3(args, model_id, predictions, evaluation):
 def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
-    if args.model in ['qra', 'fqra', 'naive']:
+    if args.model in ['qra', 'fqra', 'mean_ensemble']:
         y_hat_df = model.predict(preds_test_df)
 
     elif args.model in ['qfforma']:
@@ -461,9 +461,6 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
 
 def train_mean_ensemble(data, grid_dir, model_specs_df, args):
     # Parse data
-    data_file = './data/experiment/{}_pickle.p'.format(args.dataset)
-    data = pd.read_pickle(data_file)
-
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
     y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
@@ -518,5 +515,5 @@ if __name__ == '__main__':
         exit()
 
     assert args.dataset in ['TOURISM', 'M3', 'M4'], "Check if dataset {} is available".format(args.dataset)
-    assert args.model in ['naive', 'qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
+    assert args.model in ALL_MODEL_SPECS.keys(), "Check if model {} is defined".format(args.model)
     train(args)
