@@ -23,25 +23,29 @@ DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 GRID_QRA1 = {'model_type': ['qra'],
              'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
-             'penalty': [0.25, 0.5, 0.7]}
+             'penalty': [0.25, 0.5, 0.7],
+             'grid_id': ['grid_qra1']}
 
 GRID_FQRA1 = {'model_type': ['fqra'],
               'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
-              'n_components': [1]} # for timeseries without insufficient obs
+              'n_components': [1],
+              'grid_id': ['grid_fqra1']} # for timeseries without insufficient obs
 
 GRID_FFORMA1 = {'model_type': ['fforma'],
                 'n_estimators': [50, 100, 200, 300],
                 'eta': [0.1, 0.25, 0.5, 0.6],
                 'max_depth': [5, 15, 20, 25],
                 'subsample': [0.8, 0.85, 0.9, 0.95],
-                'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8]}
+                'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8],
+                'grid_id': ['grid_fforma1']}
 
 GRID_FFORMAM4 = {'model_type': ['fforma'],
                 'n_estimators': [94],
                 'eta': [0.58],
                 'max_depth': [14],
                 'subsample': [0.92],
-                'colsample_bytree': [0.77]}
+                'colsample_bytree': [0.77],
+                'grid_id': ['grid_fforma_m4']}
 
 GRID_QFFORMAM3 = {'model_type': ['qfforma'],
                   'n_epochs' : [5, 10, 15],
@@ -56,7 +60,8 @@ GRID_QFFORMAM3 = {'model_type': ['qfforma'],
                   'use_softmax': [False, True],
                   'train_percentile': [0.45, 0.48, 0.5, 0.53, 0.55],
                   'display_step': [1],
-                  'random_seed': [1]}
+                  'random_seed': [1],
+                  'grid_id': ['grid_qfforma_m3']}
 
 GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'n_epochs' : [5, 20, 50],
@@ -71,7 +76,8 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'use_softmax': [False, True],
                  'train_percentile': [0.4, 0.5, 0.6],
                  'display_step': [1],
-                 'random_seed': [1]}
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma1']}
 
 GRID_QFFORMA2 = {'model_type': ['qfforma'],
                  'n_epochs' : [51, 101, 201],
@@ -86,7 +92,8 @@ GRID_QFFORMA2 = {'model_type': ['qfforma'],
                  'use_softmax': [True],
                  'train_percentile': [0.45, 0.48, 0.49, 0.5, 0.51, 0.55],
                  'display_step': [10],
-                 'random_seed': [1]}
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma2']}
 
 GRID_QFFORMA3 = {'model_type': ['qfforma'],
                  'n_epochs' : [5],
@@ -101,7 +108,24 @@ GRID_QFFORMA3 = {'model_type': ['qfforma'],
                  'use_softmax': [True, False],
                  'train_percentile': [0.45, 0.5, 0.51, 0.55],
                  'display_step': [1],
-                 'random_seed': [1]}
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma3']}
+
+GRID_QFFORMA4 = {'model_type': ['qfforma'],
+                 'n_epochs' : [5, 10],
+                 'lr': [1e-5, 5e-5, 7e-5],
+                 'batch_size': [64],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [0.5, 0.8, 1],
+                 'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
+                 'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]', '[400, 200, 100, 50, 25]'],
+                 'use_softmax': [True],
+                 'train_percentile': [0.45, 0.5, 0.51, 0.55],
+                 'display_step': [1],
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma4']}
 
 ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
@@ -112,7 +136,7 @@ ALL_MODEL_SPECS  = {'qra': {'M4': GRID_QRA1,
                     'fforma': {'M4': GRID_FFORMAM4,
                                'M3': GRID_FFORMA1,
                                'TOURISM': GRID_FFORMA1},
-                    'qfforma': {'M4': GRID_QFFORMA3,
+                    'qfforma': {'M4': GRID_QFFORMA4,
                                 'M3': GRID_QFFORMAM3,
                                 'TOURISM': GRID_QFFORMA1}}
 
@@ -151,6 +175,8 @@ def generate_grid(args):
     model_specs_df = pd.DataFrame(specs_list, columns=list(model_specs.keys()))
 
     model_specs_df['model_id'] = model_specs_df.index
+    model_specs_df['model_id'] = model_specs_df['model_id'].astype(str)
+    model_specs_df['model_id'] = model_specs_df['model_id'].str.cat(model_specs_df['grid_id'], sep='_')
     np.random.seed(1)
     model_specs_df = model_specs_df.sample(frac=1).reset_index(drop=True)
 
