@@ -6,10 +6,13 @@ import pandas as pd
 
 import dask
 
+import dask.dataframe as dd
+import multiprocessing as mp
 from dask.diagnostics import ProgressBar
+from dask import delayed, compute
 from collections import ChainMap
 from functools import partial
-from itertools import product
+from itertools import chain
 from copy import deepcopy
 
 from sklearn.utils.validation import check_is_fitted
@@ -33,47 +36,63 @@ class MetaModels:
         self.models = models
         self.scheduler = scheduler
 
+    def fit_batch(self, batch, models):
+        df_models = pd.DataFrame(index=batch.index)
+
+        for col in models.keys():
+            df_models[col] = None
+
+        for uid, df in batch.groupby('unique_id'):
+            y = df['y'].item()
+            y = np.array(y)
+            seasonality = df['seasonality'].item()
+
+            for model_name, model in models.items():
+                model = deepcopy(model)
+                fitted_model = model(seasonality).fit(None, y)
+
+                df_models.loc[uid, model_name] = fitted_model
+
+        return df_models
+
     def fit(self, y_panel_df):
         """For each time series fit each model in models.
 
         y_panel_df: pandas df
             Pandas DataFrame with columns ['unique_id', 'seasonality', 'y']
         """
+        parts = mp.cpu_count() - 1
+        y_panel_df_dask = dd.from_pandas(y_panel_df.set_index('unique_id').sample(frac=1),
+                                         npartitions=parts)
+        y_panel_df_dask = y_panel_df_dask.to_delayed()
 
-        fitted_models = []
-        uids = []
-        name_models = []
-        for ts, meta_model in product(y_panel_df.groupby('unique_id'), self.models.items()):
-            uid, df = ts
+        fit_batch = partial(self.fit_batch, models=self.models)
 
-            y = df['y'].item()
-            y = np.array(y)
+        task = [delayed(fit_batch)(part) for part in y_panel_df_dask]
 
-            seasonality = df['seasonality'].item()
-
-            name_model, model = deepcopy(meta_model)
-            model = model(seasonality)
-
-            fitted_model = dask.delayed(model.fit)(None, y) #TODO: correct None
-            fitted_models.append(fitted_model)
-            uids.append(uid)
-            name_models.append(name_model)
-
-        task = dask.delayed(fitted_models)
         with ProgressBar():
-            fitted_models = task.compute(scheduler=self.scheduler)
+            fitted_models = compute(*task, scheduler=self.scheduler)
 
-        fitted_models = pd.DataFrame.from_dict({'unique_id': uids,
-                                                'model': name_models,
-                                                'fitted_model': fitted_models})
-
-        fitted_models = fitted_models.set_index(['unique_id', 'model']).unstack()
-        fitted_models = fitted_models.droplevel(0, 1).reset_index()
-        fitted_models.columns.name = ''
-
-        self.fitted_models_ = fitted_models.set_index(['unique_id'])
+        self.fitted_models_ = pd.concat(fitted_models)
 
         return self
+
+    def predict_batch(self, batch, models):
+        forecasts = pd.DataFrame(index=batch.index)
+        for col in models.keys():
+            forecasts[col] = None
+
+        for uid, df in batch.groupby('unique_id'):
+            h = df['horizon'].item()
+            df_test = range(h)
+
+            for model_name in models.keys():
+                model = df[model_name].item()
+                y_hat = model.predict(df_test)
+
+                forecasts.loc[uid, model_name] = y_hat
+
+        return forecasts
 
     def predict(self, y_hat_df):
         """Predict each univariate model for each time series.
@@ -83,35 +102,22 @@ class MetaModels:
         """
         check_is_fitted(self, 'fitted_models_')
 
-        y_hat_df = deepcopy(y_hat_df).set_index('unique_id')
+        panel_df = y_hat_df.set_index('unique_id')
+        panel_df = panel_df[['horizon']].join(self.fitted_models_)
 
-        forecasts = []
-        uids = []
-        for uid, df in y_hat_df.groupby('unique_id'):
-            h = df['horizon'].item()
-            df_test = range(h)
+        parts = mp.cpu_count() - 1
+        panel_df_dask = dd.from_pandas(panel_df, npartitions=parts).to_delayed()
 
-            models = self.fitted_models_.loc[[uid]]
-            model_forecasts = []
-            for model_name in self.models.keys():
-                model = models[model_name].item()
-                y_hat = dask.delayed(model.predict)(df_test)
-                model_forecasts.append(y_hat)
+        predidct_batch = partial(self.predict_batch, models=self.models)
 
-            forecasts.append(model_forecasts)
-            uids.append(uid)
+        task = [delayed(predidct_batch)(part) for part in panel_df_dask]
 
-        task = dask.delayed(forecasts)
         with ProgressBar():
-            forecasts = task.compute(scheduler=self.scheduler)
+            forecasts = compute(*task, scheduler=self.scheduler)
 
-        forecasts = pd.DataFrame(forecasts,
-                                 index=uids,
-                                 columns=self.fitted_models_.columns)
+        forecasts = pd.concat(forecasts).reset_index()
 
-        forecasts = forecasts.rename_axis('unique_id')
-
-        forecasts = y_hat_df.join(forecasts).reset_index()
+        forecasts = y_hat_df.merge(forecasts, how='left', on=['unique_id'])
 
 
         return forecasts
