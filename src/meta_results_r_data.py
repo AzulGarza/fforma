@@ -14,8 +14,8 @@ from src.m4_data import prepare_m4_data, prepare_full_m4_data
 from src.utils import wide_to_long
 
 URL_M4 = 'https://github.com/pmontman/M4metaresults/releases/download/v0.0.0.9000/M4metaresults_0.0.0.9000.tar.gz'
-URL_M3 = 'https://github.com/FedericoGarza/meta-data/releases/download/v0.0.0.9000/m3-meta-data.pickle'
-URL_TOURISM = 'https://github.com/FedericoGarza/meta-data/releases/download/v0.0.0.9001/tourism-meta-data.pickle'
+URL_M3 = 'https://github.com/FedericoGarza/meta-data/releases/download/v0.0.0.9000/M3-meta-data.pickle'
+URL_TOURISM = 'https://github.com/FedericoGarza/meta-data/releases/download/v0.0.0.9001/TOURISM-meta-data.pickle'
 
 def execute(cmd):
     popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)

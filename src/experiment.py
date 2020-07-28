@@ -10,7 +10,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from src.utils import (
+from src.benchmarks import (
     LassoQuantileRegressionAveraging,
     FactorQuantileRegressionAveraging
 )
@@ -32,11 +32,11 @@ GRID_FQRA1 = {'model_type': ['fqra'],
               'grid_id': ['grid_fqra1']} # for timeseries without insufficient obs
 
 GRID_FFORMA1 = {'model_type': ['fforma'],
-                'n_estimators': [50, 100, 200, 300],
-                'eta': [0.1, 0.25, 0.5, 0.6],
-                'max_depth': [5, 15, 20, 25],
-                'subsample': [0.8, 0.85, 0.9, 0.95],
-                'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8],
+                'n_estimators': np.arange(1, 250, 1),
+                'eta': np.arange(0.01, 1, 0.01),
+                'max_depth': np.arange(6, 15, 1),
+                'subsample': np.arange(0.5, 1, 0.1),
+                'colsample_bytree': np.arange(0.5, 1, 0.1),
                 'grid_id': ['grid_fforma1']}
 
 GRID_FFORMAM4 = {'model_type': ['fforma'],
