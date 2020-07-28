@@ -13,6 +13,7 @@ from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2.robjects.vectors import IntVector, FloatVector
 
 forecast = importr('forecast')
+stats = importr('stats')
 
 
 def forecast_object_to_dict(forecast_object):
@@ -243,8 +244,10 @@ class STLMFFORMA(ForecastModel):
     """
 
     def __init__(self, freq, **kwargs):
-        assert freq > 1, "STLM cannot handle non seasonal time series"
-        super().__init__(model='stlm', freq=freq, **kwargs)
+        if freq > 1:
+            super().__init__(model='stlm', freq=freq, modelfunction=stats.ar, **kwargs)
+        else:
+            super().__init__(model='auto.arima', freq=freq, d=0, D=0)
 
     def fit(self, X, y):
         try:

@@ -61,7 +61,7 @@ class MetaModels:
         y_panel_df: pandas df
             Pandas DataFrame with columns ['unique_id', 'seasonality', 'y']
         """
-        parts = mp.cpu_count() - 1
+        parts = 3 * mp.cpu_count()
         y_panel_df_dask = dd.from_pandas(y_panel_df.set_index('unique_id').sample(frac=1),
                                          npartitions=parts)
         y_panel_df_dask = y_panel_df_dask.to_delayed()
@@ -105,7 +105,7 @@ class MetaModels:
         panel_df = y_hat_df.set_index('unique_id')
         panel_df = panel_df[['horizon']].join(self.fitted_models_)
 
-        parts = mp.cpu_count() - 1
+        parts = 3 * mp.cpu_count()
         panel_df_dask = dd.from_pandas(panel_df, npartitions=parts).to_delayed()
 
         predidct_batch = partial(self.predict_batch, models=self.models)
