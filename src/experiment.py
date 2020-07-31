@@ -10,7 +10,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from src.utils import (
+from src.benchmarks import (
     LassoQuantileRegressionAveraging,
     FactorQuantileRegressionAveraging
 )
@@ -32,11 +32,11 @@ GRID_FQRA1 = {'model_type': ['fqra'],
               'grid_id': ['grid_fqra1']} # for timeseries without insufficient obs
 
 GRID_FFORMA1 = {'model_type': ['fforma'],
-                'n_estimators': [50, 100, 200, 300],
-                'eta': [0.1, 0.25, 0.5, 0.6],
-                'max_depth': [5, 15, 20, 25],
-                'subsample': [0.8, 0.85, 0.9, 0.95],
-                'colsample_bytree': [0.6, 0.65, 0.7, 0.75, 0.8],
+                'n_estimators': np.arange(1, 250, 1),
+                'eta': np.arange(0.01, 1, 0.01),
+                'max_depth': np.arange(6, 15, 1),
+                'subsample': np.arange(0.5, 1, 0.1),
+                'colsample_bytree': np.arange(0.5, 1, 0.1),
                 'grid_id': ['grid_fforma1']}
 
 GRID_FFORMAM4 = {'model_type': ['fforma'],
@@ -131,9 +131,9 @@ QRID_NAIVE = {'model_type': ['mean_ensemble'],
               'param' : ['soy un placeholder'],
               'grid_id': ['grid_naive']}
 
-ALL_MODEL_SPECS  = {'naive': {'M4': QRID_NAIVE,
-                            'M3': QRID_NAIVE,
-                            'TOURISM': QRID_NAIVE},
+ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
+                                      'M3': QRID_NAIVE,
+                                      'TOURISM': QRID_NAIVE},
                     'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
                             'TOURISM': GRID_QRA1},
@@ -241,7 +241,7 @@ def read_data(dataset='M4'):
     return data
 
 def train(args):
-    train_model = {'naive': train_mean_ensemble,
+    train_model = {'mean_ensemble': train_mean_ensemble,
                    'qra': train_qra,
                    'fqra': train_fqra,
                    'fforma': train_fforma,
@@ -268,7 +268,7 @@ def upload_to_s3(args, model_id, predictions, evaluation):
 def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
-    if args.model in ['qra', 'fqra', 'naive']:
+    if args.model in ['qra', 'fqra', 'mean_ensemble']:
         y_hat_df = model.predict(preds_test_df)
 
     elif args.model in ['qfforma']:
@@ -461,9 +461,6 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
 
 def train_mean_ensemble(data, grid_dir, model_specs_df, args):
     # Parse data
-    data_file = './data/experiment/{}_pickle.p'.format(args.dataset)
-    data = pd.read_pickle(data_file)
-
     X_train_df = data['X_train_df']
     preds_train_df = data['preds_train_df']
     y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
@@ -518,5 +515,5 @@ if __name__ == '__main__':
         exit()
 
     assert args.dataset in ['TOURISM', 'M3', 'M4'], "Check if dataset {} is available".format(args.dataset)
-    assert args.model in ['naive', 'qra', 'fqra', 'fforma', 'qfforma'], "Check if model {} is defined".format(args.model)
+    assert args.model in ALL_MODEL_SPECS.keys(), "Check if model {} is defined".format(args.model)
     train(args)

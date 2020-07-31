@@ -14,6 +14,7 @@ from itertools import product, chain
 import itertools
 
 from functools import partial
+from statsmodels.api import add_constant
 
 import numpy as np
 import pandas as pd
@@ -90,7 +91,7 @@ class MetaLearnerMean(object):
         pass
 
     def fit(self, preds_df_test=None, y_df_test=None, verbose=True):
-        
+
         y_hat_df = preds_df_test[['unique_id', 'ds']]
         y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).mean(axis=1)
 
@@ -321,5 +322,3 @@ class LassoQuantileRegressionAveraging:
 
         y_hat = pd.concat(y_hat).rename('y_hat').to_frame().reset_index()
         return y_hat
-
-
