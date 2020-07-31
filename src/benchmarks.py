@@ -11,18 +11,19 @@ import dask.dataframe as dd
 from dask.diagnostics import ProgressBar
 
 from itertools import product, chain
+import itertools
+
 from functools import partial
 
 import numpy as np
 import pandas as pd
 
-from sklearn.utils.validation import check_is_fitted
-from sklearn.decomposition import PCA
-from statsmodels.regression.quantile_regression import QuantReg
 from src.l1qr import L1QR
 
 from src.metrics.metrics import smape, mape
 
+from src.base_models import FQRA
+from src.meta_model import MetaModels
 
 #############################################################################
 # COMMON
@@ -109,109 +110,124 @@ class MetaLearnerMean(object):
 
         return y_hat_df
 
-
-
-
 #############################################################################
 # FQRA
 #############################################################################
+
+def long_to_horizontal(long_df):
+    horizontal_df = pd.DataFrame(columns=long_df.columns)
+    cols_to_parse = list(set(long_df.columns)-set(['unique_id']))
+    long_df = long_df.sort_values(['unique_id','ds']).reset_index(drop=True)
+    unique_ids = long_df['unique_id'].unique()
+    n_series = len(unique_ids)
+    max_len = long_df.groupby('unique_id')['ds'].count().max()
+    
+    dict_df = {'unique_id':unique_ids,
+               'ds':list(range(1, max_len+1))} #TODO: solo enteros ####################################
+    padding_dict = list(itertools.product(*list(dict_df.values())))
+    padding_dict = pd.DataFrame(padding_dict, columns=list(dict_df.keys()))
+    df_padded = padding_dict.merge(long_df, on=['unique_id','ds'], how='outer')
+    df_padded = df_padded.sort_values(['unique_id','ds']).reset_index(drop=True)
+    
+    for col in cols_to_parse:
+        values = df_padded[col].values
+        values = values.reshape((n_series, max_len))
+        values = values.tolist()
+        horizontal_df[col] = values
+
+    horizontal_df['unique_id'] = unique_ids
+    return horizontal_df
+
+def train_to_horizontal(X_df, y_df, x_cols=None):
+    if x_cols is None:
+        x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
+    
+    x_horizontal = long_to_horizontal(X_df)
+    y_horizontal = long_to_horizontal(y_df)
+    train_df = x_horizontal.merge(y_horizontal, on='unique_id', how='outer')
+    
+    for i, row in train_df.iterrows():
+        assert len(row['ds_x'])==len(row['ds_y']), 'ds_x and ds_y not corresponding'
+    
+    # Despadeo
+    X_list = []
+    y_list = []
+    ds_list = []
+    for i in range(len(train_df)):
+        X_i = np.vstack(train_df[x_cols].values[i]).T.reshape(-1, len(x_cols))
+        X_i = X_i[~np.isnan(X_i).any(axis=1)]
+        X_list.append(X_i)
+
+        y_i = np.array(train_df['y'].values[i])
+        ds_i = np.array(train_df['ds_x'].values[i])
+        ds_i = ds_i[~np.isnan(y_i)] # Only keeps if y is not null
+        ds_list.append(ds_i)
+
+        y_i = y_i[~np.isnan(y_i)]
+        y_list.append(y_i)
+        
+    train_df['X'] = X_list
+    train_df['y'] = y_list
+    train_df['ds'] = ds_list
+
+    train_df = train_df[['unique_id','X','y','ds']]
+
+    return train_df
+
+def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
+    # make sure `lst_cols` is list-alike
+    if (lst_cols is not None
+        and len(lst_cols) > 0
+        and not isinstance(lst_cols, (list, tuple, np.ndarray, pd.Series))):
+        lst_cols = [lst_cols]
+    # all columns except `lst_cols`
+    idx_cols = df.columns.difference(lst_cols)
+    # calculate lengths of lists
+    lens = df[lst_cols[0]].str.len()
+    # preserve original index values    
+    idx = np.repeat(df.index.values, lens)
+    # create "exploded" DF
+    res = (pd.DataFrame({
+                col:np.repeat(df[col].values, lens)
+                for col in idx_cols},
+                index=idx)
+             .assign(**{col:np.concatenate(df.loc[lens>0, col].values)
+                            for col in lst_cols}))
+    # append those rows that have empty lists
+    if (lens == 0).any():
+        # at least one list in cells is empty
+        res = (res.append(df.loc[lens==0, idx_cols], sort=False)
+                  .fillna(fill_value))
+    # revert the original index order
+    res = res.sort_index()
+    # reset index if requested
+    if not preserve_index:        
+        res = res.reset_index(drop=True)
+    return res
 
 class FactorQuantileRegressionAveraging:
 
     def __init__(self, tau, n_components, add_constant=True):
         self.tau = tau
         self.n_components = n_components
-        self.add_constant_ = add_constant
-
-    def _fit_quantile_ts(self, uid, X_df, y_df, n_components, add_constant_x):
-        """
-        X: numpy array
-        y: numpy array
-        """
-        y = y_df['y'].values
-        X = X_df.values
-
-        pca_model = PCA(n_components=n_components).fit(X)
-        X = pca_model.transform(X)
-        cols = [f'factor_{f+1}' for f in range(X.shape[1])]
-
-        if add_constant_x:
-            X = add_constant(X)
-            cols = ['constant'] + cols
-
-        if X.shape[1] > 1:
-            cond_number = np.linalg.cond(X)
-
-            assert cond_number < 1e15, f'Matrix of forecasts is ill-conditioned. {uid}\n{X.shape}'
-
-        opt_params = QuantReg(y, X).fit(self.tau).params
-        opt_params = dict(zip(cols, opt_params))
-        opt_params = pd.DataFrame(opt_params, index=[uid])
-
-        pca_model = pd.DataFrame({'model': pca_model}, index=[uid])
-
-        return opt_params, pca_model
-
-    def _predict_quantile_ts(self, model, X_df, add_constant_x):
-        """
-        """
-        X = X_df.values
-        X = model.transform(X)
-        cols = [f'factor_{f+1}' for f in range(X.shape[1])]
-
-        if add_constant_x:
-            X = add_constant(X)
-            cols = ['constant'] + cols
-
-        X = pd.DataFrame(X, columns=cols, index=X_df.index)
-
-        return X
-
-    def batch_train(self, batch, n_components, add_constant_x):
-
-        params, pca_models = [], []
-
-        for uid, df in batch.groupby('unique_id'):
-            y = df[['y']]
-            X = df.drop(columns=['ds', 'y'])
-            param, pca_model = self._fit_quantile_ts(uid, X, y,
-                                                     n_components,
-                                                     add_constant_x)
-            params.append(param)
-            pca_models.append(pca_model)
-
-        return params, pca_models
+        self.model = {'FQRA': FQRA(n_components=self.n_components, tau=self.tau)}
 
     def fit(self, X_df, y_df, X_test_df, y_test_df):
         """
-        X: pandas df
-            Panel DataFrame with columns unique_id, ds, models to ensemble
-        y: pandas df
-            Panel Dataframe with columns unique_id, df, y
         """
+        train_df = train_to_horizontal(X_df, y_df)
+        train_df['seasonality']= 12 #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXoXXXXXXXXXXXXX
+        test_df = train_to_horizontal(X_test_df, y_test_df)
 
-        full_df = X_df.merge(y_df, how='left', on=['unique_id', 'ds'])
-        full_df = full_df.set_index('unique_id')
+        self.meta_model = MetaModels(models=self.model)
+        self.meta_model.fit(y_panel_df=train_df)
 
-        parts = mp.cpu_count() - 1
-        full_df_dask = dd.from_pandas(full_df, npartitions=parts)
-        full_df_dask = full_df_dask.to_delayed()
-
-        batch_train = partial(self.batch_train, n_components=self.n_components,
-                              add_constant_x=self.add_constant_)
-
-        task = [delayed(batch_train)(part) for part in full_df_dask]
-
-        with ProgressBar():
-            params_models = compute(*task, scheduler='processes')
-
-        params, models = zip(*params_models)
-        params, models = list(chain(*params)), list(chain(*models))
-
-        self.weigths_ = pd.concat(params).fillna(0).rename_axis('unique_id')
-        self.models_ = pd.concat(models)
-
-        y_hat_df = self.predict(X_test_df)
+        y_hat_df = self.meta_model.predict(test_df)
+        y_hat_df = y_hat_df[['unique_id','ds','FQRA']]
+        y_hat_df.columns = ['unique_id', 'ds', 'y_hat']
+        self.y_hat_df = y_hat_df
+        y_hat_df = wide_to_long(y_hat_df, lst_cols=['y_hat','ds'])
+        self.y_hat_df = y_hat_df
 
         self.test_min_smape = evaluate_panel(y_panel=y_test_df,
                                              y_hat_panel=y_hat_df,
@@ -225,23 +241,6 @@ class FactorQuantileRegressionAveraging:
     def predict(self, X_df):
         """
         """
-        check_is_fitted(self, 'models_')
-        partial_predict_quantile_ts = partial(self._predict_quantile_ts,
-                                              add_constant_x=self.add_constant_)
-
-        X_transformed = []
-        for uid, X in X_df.set_index(['unique_id', 'ds']).groupby('unique_id'):
-            model = self.models_.loc[uid, 'model']
-            transformed = delayed(partial_predict_quantile_ts)(model, X)
-            X_transformed.append(transformed)
-
-        with ProgressBar():
-            X_transformed = compute(*X_transformed)
-
-        X_transformed = pd.concat(X_transformed).fillna(0)
-        y_hat = (self.weigths_ * X_transformed).sum(axis=1)
-        y_hat.name = 'y_hat'
-        y_hat = y_hat.to_frame().reset_index()
 
         return y_hat
 

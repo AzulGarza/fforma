@@ -8,6 +8,8 @@ from math import sqrt
 from numpy.random import seed
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 from scipy.optimize import minimize
+from statsmodels.regression.quantile_regression import QuantReg
+from sklearn.decomposition import PCA
 
 seed(1)
 
@@ -449,6 +451,32 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
         return preds
 
 
+class FQRA(BaseEstimator, RegressorMixin):
+    """
+    FQRA:
+    """
+    def __init__(self, n_components, tau):
+        self.n_components = n_components
+        self.tau = tau
+
+    def fit(self, X, y):
+        assert self.n_components <= X.shape[1], 'Check n_components'
+        self.pca = PCA(n_components=self.n_components)
+        self.pca.fit(X)
+
+        X = self.pca.transform(X)
+        X = np.hstack([X, np.ones((len(X),1))])
+        self.qr = QuantReg(y, X).fit(self.tau)
+
+        return self
+
+    def predict(self, X):
+        X = self.pca.transform(X)
+        X = np.hstack([X, np.ones((len(X),1))])
+        preds = self.qr.predict(X)
+        return preds
+
+
 ######################################################################
 # SPARSE BENCHMARK MODELS
 ######################################################################
@@ -695,3 +723,5 @@ class iMAPA(BaseEstimator, RegressorMixin):
         h = X.shape[0]
         y_hat = np.repeat(np.mean(self.frc_), h)
         return y_hat
+
+

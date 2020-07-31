@@ -52,9 +52,13 @@ class MetaModels:
             seasonality = df['seasonality'].item()
 
             name_model, model = deepcopy(meta_model)
-            model = model(seasonality)
+            #model = model(seasonality) #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-            fitted_model = dask.delayed(model.fit)(None, y) #TODO: correct None
+            if 'X' in df.columns:
+                X = df['X'].item()
+                fitted_model = dask.delayed(model.fit)(X, y)
+            else:
+                fitted_model = dask.delayed(model.fit)(None, y)
             fitted_models.append(fitted_model)
             uids.append(uid)
             name_models.append(name_model)
@@ -88,8 +92,12 @@ class MetaModels:
         forecasts = []
         uids = []
         for uid, df in y_hat_df.groupby('unique_id'):
-            h = df['horizon'].item()
-            df_test = range(h)
+            #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+            if 'horizon' in df.columns:
+                h = df['horizon'].item()
+                df_test = range(h)
+            elif 'X' in df.columns:
+                df_test = df['X'].item()
 
             models = self.fitted_models_.loc[[uid]]
             model_forecasts = []
@@ -112,6 +120,5 @@ class MetaModels:
         forecasts = forecasts.rename_axis('unique_id')
 
         forecasts = y_hat_df.join(forecasts).reset_index()
-
 
         return forecasts
