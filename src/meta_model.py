@@ -51,7 +51,8 @@ class MetaModels:
 
             for model_name, model in models.items():
                 model = deepcopy(model)
-                fitted_model = model(seasonality).fit(X, y)
+                #fitted_model = model(seasonality).fit(X, y)
+                fitted_model = model.fit(X, y)
 
                 df_models.loc[uid, model_name] = fitted_model
 
@@ -85,12 +86,11 @@ class MetaModels:
             forecasts[col] = None
 
         for uid, df in batch.groupby('unique_id'):
-
             if 'horizon' in df.columns:
                 h = df['horizon'].item()
                 df_test = range(h)
-            elif 'X_test' in df.columns:
-                df_test = df['X_test'].item()
+            elif 'X' in df.columns:
+                df_test = df['X'].item()
 
             for model_name in models.keys():
                 model = df[model_name].item()
@@ -109,9 +109,9 @@ class MetaModels:
         check_is_fitted(self, 'fitted_models_')
 
         panel_df = y_hat_df.set_index('unique_id')
-        panel_df = panel_df[['horizon']].join(self.fitted_models_)
+        panel_df = panel_df.filter(items=['horizon', 'X']).join(self.fitted_models_)
 
-        parts = 3 * mp.cpu_count()
+        parts = 1 * mp.cpu_count()
         panel_df_dask = dd.from_pandas(panel_df, npartitions=parts).to_delayed()
 
         predidct_batch = partial(self.predict_batch, models=self.models)

@@ -506,7 +506,7 @@ class QRAL1(BaseEstimator, RegressorMixin):
         return y_hat
 
     def objective_fn(self, X, y, beta, tau, lambd):
-        return self._pinball(X, y, beta, tau) + lambd * self._l1(beta)
+        return self._pinball(X, y, beta, tau) + lambd * y.mean() * self._l1(beta)
 
     def fit(self, X, y):
         n = X.shape[1]
