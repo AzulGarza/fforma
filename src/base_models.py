@@ -3,6 +3,7 @@
 
 import numpy as np
 import pandas as pd
+import cvxpy as cp
 
 from math import sqrt
 from numpy.random import seed
@@ -450,7 +451,6 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
 
         return preds
 
-
 class FQRA(BaseEstimator, RegressorMixin):
     """
     FQRA:
@@ -476,6 +476,54 @@ class FQRA(BaseEstimator, RegressorMixin):
         preds = self.qr.predict(X)
         return preds
 
+class QRAL1(BaseEstimator, RegressorMixin):
+    """
+    Quantile Regression Averaging with Lasso Regularization:
+    Helps to reduce the high dimensionality of X.
+    The penalized linear quantile regression
+    refines selection of important features
+    at different quantile levels.
+    """
+    def __init__(self, tau, lambd):
+        self.tau = cp.Parameter(nonneg=True)
+        self.lambd = cp.Parameter(nonneg=True)
+
+        self.tau.value = tau
+        self.lambd.value = lambd
+
+    def _pinball(self, X, y, beta, tau):
+        y_hat = X @ beta
+        delta_y = y - y_hat
+        pinball = cp.maximum(tau * delta_y, (tau-1) * delta_y)
+        pinball = cp.sum(pinball)
+        return pinball
+
+    def _l1(self, beta):
+        return cp.norm1(beta-self.average_weights)
+
+    def _y_hat(self, X):
+        y_hat = X @ self.beta
+        return y_hat
+
+    def objective_fn(self, X, y, beta, tau, lambd):
+        return self._pinball(X, y, beta, tau) + lambd * self._l1(beta)
+
+    def fit(self, X, y):
+        n = X.shape[1]
+        assert X.shape[0]==len(y)
+        self.average_weights = (1 / n) * np.ones(n)
+        beta = cp.Variable(n)
+
+        # Optimize
+        obj_fn = self.objective_fn(X=X, y=y, beta=beta,
+                                   tau=self.tau, lambd=self.lambd)
+        problem = cp.Problem(cp.Minimize(obj_fn))
+        problem.solve()
+        self.beta = beta.value
+        return self
+
+    def predict(self, X):
+        return self._y_hat(X)
 
 ######################################################################
 # SPARSE BENCHMARK MODELS
@@ -723,5 +771,3 @@ class iMAPA(BaseEstimator, RegressorMixin):
         h = X.shape[0]
         y_hat = np.repeat(np.mean(self.frc_), h)
         return y_hat
-
-

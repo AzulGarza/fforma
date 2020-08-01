@@ -47,9 +47,11 @@ class MetaModels:
             y = np.array(y)
             seasonality = df['seasonality'].item()
 
+            X = df['X'].item() if 'X' in df.columns else None
+
             for model_name, model in models.items():
                 model = deepcopy(model)
-                fitted_model = model(seasonality).fit(None, y)
+                fitted_model = model(seasonality).fit(X, y)
 
                 df_models.loc[uid, model_name] = fitted_model
 
@@ -73,18 +75,6 @@ class MetaModels:
         with ProgressBar():
             fitted_models = compute(*task, scheduler=self.scheduler)
 
-            name_model, model = deepcopy(meta_model)
-            #model = model(seasonality) #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
-            if 'X' in df.columns:
-                X = df['X'].item()
-                fitted_model = dask.delayed(model.fit)(X, y)
-            else:
-                fitted_model = dask.delayed(model.fit)(None, y)
-            fitted_models.append(fitted_model)
-            uids.append(uid)
-            name_models.append(name_model)
-
         self.fitted_models_ = pd.concat(fitted_models)
 
         return self
@@ -95,8 +85,12 @@ class MetaModels:
             forecasts[col] = None
 
         for uid, df in batch.groupby('unique_id'):
-            h = df['horizon'].item()
-            df_test = range(h)
+
+            if 'horizon' in df.columns:
+                h = df['horizon'].item()
+                df_test = range(h)
+            elif 'X_test' in df.columns:
+                df_test = df['X_test'].item()
 
             for model_name in models.keys():
                 model = df[model_name].item()
@@ -116,16 +110,6 @@ class MetaModels:
 
         panel_df = y_hat_df.set_index('unique_id')
         panel_df = panel_df[['horizon']].join(self.fitted_models_)
-
-        forecasts = []
-        uids = []
-        for uid, df in y_hat_df.groupby('unique_id'):
-            #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-            if 'horizon' in df.columns:
-                h = df['horizon'].item()
-                df_test = range(h)
-            elif 'X' in df.columns:
-                df_test = df['X'].item()
 
         parts = 3 * mp.cpu_count()
         panel_df_dask = dd.from_pandas(panel_df, npartitions=parts).to_delayed()
