@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import cvxpy as cp
 
+from cvxpy.error import SolverError
 from math import sqrt
 from numpy.random import seed
 from sklearn.base import BaseEstimator, RegressorMixin, clone
@@ -518,8 +519,12 @@ class QRAL1(BaseEstimator, RegressorMixin):
         obj_fn = self.objective_fn(X=X, y=y, beta=beta,
                                    tau=self.tau, lambd=self.lambd)
         problem = cp.Problem(cp.Minimize(obj_fn))
-        problem.solve()
-        self.beta = beta.value
+        try:
+            problem.solve()
+            self.beta = beta.value
+        except SolverError:
+            print('SolverError, using average weights as optimal.')
+            self.beta = self.average_weights
         return self
 
     def predict(self, X):
