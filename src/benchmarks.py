@@ -294,5 +294,6 @@ class LassoQuantileRegressionAveraging:
     def predict(self, X_df):
         """
         """
+        y_hat = self.y_hat_df
 
         return y_hat

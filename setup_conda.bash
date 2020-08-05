@@ -30,7 +30,7 @@ pip install seaborn
 pip install xgboost==0.90
 pip install s3fs
 pip install boto3
-pip install tsfeatures==0.1.1
+pip install tsfeatures==0.1.0
 pip install cvxpy
 conda install dask
 #conda install -c conda-forge pathos
