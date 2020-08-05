@@ -43,11 +43,11 @@ class MetaModels:
             df_models[col] = None
 
         for uid, df in batch.groupby('unique_id'):
-            y = df['y'].item()
+            y = df['y'].values.item()
             y = np.array(y)
-            seasonality = df['seasonality'].item()
+            seasonality = df['seasonality'].values.item()
 
-            X = df['X'].item() if 'X' in df.columns else None
+            X = df['X'].values.item() if 'X' in df.columns else None
 
             for model_name, model in models.items():
                 model = deepcopy(model)
@@ -87,13 +87,13 @@ class MetaModels:
 
         for uid, df in batch.groupby('unique_id'):
             if 'horizon' in df.columns:
-                h = df['horizon'].item()
+                h = df['horizon'].values.item()
                 df_test = range(h)
             elif 'X' in df.columns:
-                df_test = df['X'].item()
+                df_test = df['X'].values.item()
 
             for model_name in models.keys():
-                model = df[model_name].item()
+                model = df[model_name].values.item()
                 y_hat = model.predict(df_test)
 
                 forecasts.loc[uid, model_name] = y_hat

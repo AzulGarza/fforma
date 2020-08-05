@@ -22,9 +22,19 @@ from src.benchmarks import (
 DICT_FREQS = {'H':24, 'D': 7, 'W':52, 'M': 12, 'Q': 4, 'Y': 1}
 
 GRID_QRA1 = {'model_type': ['qra'],
-             'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
-             'penalty': [0.25, 0.5, 0.7],
+             'tau': [0.5, 0.45, 0.55],
+             'penalty': [1., 1.5, 2., 2.5, 3, 3.5],
              'grid_id': ['grid_qra1']}
+
+GRID_QRA2 = {'model_type': ['qra'],
+             'tau': [0.5, 0.48, 0.49, 0.51, 0.52],
+             'penalty': [3, 3.5, 4, 4.5, 5, 5.5],
+             'grid_id': ['grid_qra2']}
+
+GRID_QRA3 = {'model_type': ['qra'],
+             'tau': [0.5, 0.48, 0.49, 0.51, 0.52],
+             'penalty': [5, 10, 15, 20, 25],
+             'grid_id': ['grid_qra3']}
 
 GRID_FQRA1 = {'model_type': ['fqra'],
               'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
@@ -68,12 +78,12 @@ GRID_QFFORMA1 = {'model_type': ['qfforma'],
                  'lr': [5e-5, 7e-5, 1e-4, 5e-4, 7e-4, 1e-3, 5e-3, 7e-3, 1e-2, 5e-2],
                  'batch_size': [64, 128],
                  'gradient_eps': [1e-8],
-                 'weight_decay': [0],
+                 'weight_decay': [0, 1, 2, 5],
                  #'lr_scheduler_step_size': [10],
                  'lr_decay': [0.5, 1],
                  'dropout': [0, 0.3],
                  'layers': ['[100]', '[100, 50]', '[200, 100, 50, 25, 10]'],
-                 'use_softmax': [False, True],
+                 'use_softmax': [False],
                  'train_percentile': [0.4, 0.5, 0.6],
                  'display_step': [1],
                  'random_seed': [1],
@@ -127,6 +137,23 @@ GRID_QFFORMA4 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma4']}
 
+GRID_QFFORMATEST = {'model_type': ['qfforma'],
+                     'n_epochs' : [5, 10],
+                     'lr': [1e-5, 5e-5, 7e-5],
+                     'batch_size': [64],
+                     'gradient_eps': [1e-8],
+                     'weight_decay': [0, 1, 2],
+                     #'lr_scheduler_step_size': [10],
+                     'lr_decay': [0.5, 0.8, 1],
+                     'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
+                     'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]', '[400, 200, 100, 50, 25]'],
+                     'use_softmax': [False],
+                     'train_percentile': [0.45, 0.5, 0.51, 0.55],
+                     'display_step': [1],
+                     'random_seed': [1],
+                     'grid_id': ['grid_qfforma4']}
+
+
 QRID_NAIVE = {'model_type': ['mean_ensemble'],
               'param' : ['soy un placeholder'],
               'grid_id': ['grid_naive']}
@@ -136,7 +163,7 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                                       'TOURISM': QRID_NAIVE},
                     'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA1,
-                            'TOURISM': GRID_QRA1},
+                            'TOURISM': GRID_QRA3},
                     'fqra': {'M4': GRID_FQRA1,
                              'M3': GRID_FQRA1,
                              'TOURISM': GRID_FQRA1},
@@ -144,8 +171,8 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                                'M3': GRID_FFORMA1,
                                'TOURISM': GRID_FFORMA1},
                     'qfforma': {'M4': GRID_QFFORMA4,
-                                'M3': GRID_QFFORMAM3,
-                                'TOURISM': GRID_QFFORMA1}}
+                                'M3': GRID_QFFORMA1,
+                                'TOURISM': GRID_QFFORMATEST}}
 
 #############################################################################
 # COMMON
@@ -417,7 +444,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
     from fforma import FFORMA
     from metrics.pytorch_metrics import WeightedPinballLoss
     from meta_learner import MetaLearnerNN
-    from utils import evaluate_model_prediction
+    #from utils import evaluate_model_prediction
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

@@ -16,7 +16,6 @@ conda install -c r rpy2==3.3.3
 conda install -c conda-forge lightgbm==2.3.1
 conda install -c conda-forge supersmoother
 conda install -c bashtage arch
-pip install stldecompose
 
 # Pytorch
 conda install pytorch=1.3.1 -c pytorch
@@ -26,14 +25,13 @@ pip install ESRNN==0.1.2
 
 #Other
 conda install -c anaconda patsy==0.5.1
-pip install --user rstl
 pip install threadpoolctl # este porque?
 pip install seaborn
 pip install xgboost==0.90
 pip install s3fs
 pip install boto3
-pip instal -U pandas
-pip install git+https://github.com/FedericoGarza/tsfeatures
+pip install tsfeatures==0.1.1
+pip install cvxpy
 conda install dask
 #conda install -c conda-forge pathos
 
