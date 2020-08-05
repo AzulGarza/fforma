@@ -139,6 +139,31 @@ def long_to_horizontal(long_df):
     horizontal_df['unique_id'] = unique_ids
     return horizontal_df
 
+def unpad_batch(batch, x_cols):
+    batch = batch.copy()
+
+    X_list = []
+    y_list = []
+    ds_list = []
+    for uid, df in batch.groupby('unique_id'):
+        X_i = np.vstack(df[x_cols].values[0]).T.reshape(-1, len(x_cols))
+        X_i = X_i[~np.isnan(X_i).any(axis=1)]
+        X_list.append(X_i)
+
+        y_i = np.array(df['y'].values[0])
+        ds_i = np.array(df['ds_x'].values[0])
+        ds_i = ds_i[~np.isnan(y_i)] # Only keeps if y is not null
+        ds_list.append(ds_i)
+
+        y_i = y_i[~np.isnan(y_i)]
+        y_list.append(y_i)
+
+    batch['X'] = X_list
+    batch['y'] = y_list
+    batch['ds'] = ds_list
+
+    return batch
+
 def train_to_horizontal(X_df, y_df, x_cols=None):
     if x_cols is None:
         x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
@@ -150,27 +175,19 @@ def train_to_horizontal(X_df, y_df, x_cols=None):
     for i, row in train_df.iterrows():
         assert len(row['ds_x'])==len(row['ds_y']), 'ds_x and ds_y not corresponding'
 
-    # Despadeo
-    X_list = []
-    y_list = []
-    ds_list = []
-    for i in range(len(train_df)):
-        X_i = np.vstack(train_df[x_cols].values[i]).T.reshape(-1, len(x_cols))
-        X_i = X_i[~np.isnan(X_i).any(axis=1)]
-        X_list.append(X_i)
+    train_df = train_df.set_index('unique_id')
 
-        y_i = np.array(train_df['y'].values[i])
-        ds_i = np.array(train_df['ds_x'].values[i])
-        ds_i = ds_i[~np.isnan(y_i)] # Only keeps if y is not null
-        ds_list.append(ds_i)
+    parts = 3 * mp.cpu_count()
+    train_df = dd.from_pandas(train_df.sample(frac=1), npartitions=parts).to_delayed()
 
-        y_i = y_i[~np.isnan(y_i)]
-        y_list.append(y_i)
+    unpad_batch_p = partial(unpad_batch, x_cols=x_cols)
 
-    train_df['X'] = X_list
-    train_df['y'] = y_list
-    train_df['ds'] = ds_list
+    task = [delayed(unpad_batch_p)(part) for part in train_df]
 
+    with ProgressBar():
+        train_df = compute(*task, scheduler='processes')
+
+    train_df = pd.concat(train_df).reset_index()
     train_df = train_df[['unique_id','X','y','ds']]
 
     return train_df
