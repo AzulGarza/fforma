@@ -25,6 +25,7 @@ from src.metrics.metrics import smape, mape
 
 from src.base_models import FQRA, QRAL1
 from src.meta_model import MetaModels
+from src.utils import long_to_wide
 
 #############################################################################
 # COMMON
@@ -139,32 +140,26 @@ def long_to_horizontal(long_df):
     horizontal_df['unique_id'] = unique_ids
     return horizontal_df
 
-def unpad_batch(batch, x_cols):
-    batch = batch.copy()
+def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):
+    if x_cols is None:
+        x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
 
-    X_list = []
-    y_list = []
-    ds_list = []
-    for uid, df in batch.groupby('unique_id'):
-        X_i = np.vstack(df[x_cols].values[0]).T.reshape(-1, len(x_cols))
-        X_i = X_i[~np.isnan(X_i).any(axis=1)]
-        X_list.append(X_i)
+    x_horizontal = long_to_wide(X_df, cols_to_parse=['ds', x_cols],
+                                cols_wide=['ds', 'X'],
+                                threads=threads)
+    y_horizontal = long_to_wide(y_df, threads=threads)
+    train_df = x_horizontal.merge(y_horizontal, on='unique_id', how='outer')
 
-        y_i = np.array(df['y'].values[0])
-        ds_i = np.array(df['ds_x'].values[0])
-        ds_i = ds_i[~np.isnan(y_i)] # Only keeps if y is not null
-        ds_list.append(ds_i)
+    for i, row in train_df.iterrows():
+        assert len(row['ds_x'])==len(row['ds_y']), 'ds_x and ds_y not corresponding'
 
-        y_i = y_i[~np.isnan(y_i)]
-        y_list.append(y_i)
+    train_df['ds'] = train_df['ds_x']
 
-    batch['X'] = X_list
-    batch['y'] = y_list
-    batch['ds'] = ds_list
+    train_df = train_df[['unique_id','X','y','ds']]
 
-    return batch
+    return train_df
 
-def train_to_horizontal(X_df, y_df, x_cols=None):
+def train_to_horizontal_1(X_df, y_df, x_cols=None):
     if x_cols is None:
         x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
 
@@ -175,19 +170,27 @@ def train_to_horizontal(X_df, y_df, x_cols=None):
     for i, row in train_df.iterrows():
         assert len(row['ds_x'])==len(row['ds_y']), 'ds_x and ds_y not corresponding'
 
-    train_df = train_df.set_index('unique_id')
+    # Despadeo
+    X_list = []
+    y_list = []
+    ds_list = []
+    for i in range(len(train_df)):
+        X_i = np.vstack(train_df[x_cols].values[i]).T.reshape(-1, len(x_cols))
+        X_i = X_i[~np.isnan(X_i).any(axis=1)]
+        X_list.append(X_i)
 
-    parts = 3 * mp.cpu_count()
-    train_df = dd.from_pandas(train_df.sample(frac=1), npartitions=parts).to_delayed()
+        y_i = np.array(train_df['y'].values[i])
+        ds_i = np.array(train_df['ds_x'].values[i])
+        ds_i = ds_i[~np.isnan(y_i)] # Only keeps if y is not null
+        ds_list.append(ds_i)
 
-    unpad_batch_p = partial(unpad_batch, x_cols=x_cols)
+        y_i = y_i[~np.isnan(y_i)]
+        y_list.append(y_i)
 
-    task = [delayed(unpad_batch_p)(part) for part in train_df]
+    train_df['X'] = X_list
+    train_df['y'] = y_list
+    train_df['ds'] = ds_list
 
-    with ProgressBar():
-        train_df = compute(*task, scheduler='processes')
-
-    train_df = pd.concat(train_df).reset_index()
     train_df = train_df[['unique_id','X','y','ds']]
 
     return train_df
@@ -235,8 +238,10 @@ class FactorQuantileRegressionAveraging:
         """
         """
         train_df = train_to_horizontal(X_df, y_df)
+        print('Widing finished.')
         train_df['seasonality']= 12 #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXoXXXXXXXXXXXXX
         test_df = train_to_horizontal(X_test_df, y_test_df)
+        print('Widing finished.')
 
         self.meta_model = MetaModels(models=self.model, scheduler=self.scheduler)
         self.meta_model.fit(y_panel_df=train_df)
@@ -311,6 +316,6 @@ class LassoQuantileRegressionAveraging:
     def predict(self, X_df):
         """
         """
-        y_hat = self.y_hat_df
+        y_hat = self.meta_model.y_hat_df
 
         return y_hat

@@ -138,22 +138,32 @@ def wide_to_long(df, lst_cols, fill_value='', preserve_index=False):
         res = res.reset_index(drop=True)
     return res
 
-def long_to_wide_uid(uid, df, full_columns, cols_to_parse):
-    horizontal_df = pd.DataFrame(columns=full_columns)
-    for col in cols_to_parse:
-        horizontal_df[col] = [df[col].values]
+def long_to_wide_uid(uid, df, columns, cols_to_parse):
+    horizontal_df = pd.DataFrame(columns=columns)
+    for col, col_to_parse in zip(columns, cols_to_parse):
+        horizontal_df[col] = [df[col_to_parse].values]
+
     horizontal_df['unique_id'] = uid
 
     return horizontal_df
 
-def long_to_wide(long_df, threads=None):
+def long_to_wide(long_df, cols_to_parse=None,
+                 cols_wide=None,
+                 threads=None):
 
     if threads is None:
         threads = mp.cpu_count()
 
-    cols_to_parse = set(long_df.columns) - {'unique_id'}
+    if cols_to_parse is None:
+        cols_to_parse = set(long_df.columns) - {'unique_id'}
+
+    if cols_wide is None:
+        cols_wide = cols_to_parse
+
+    assert len(cols_to_parse) == len(cols_wide), 'Cols to parse and cols wide must have the same len'
+
     partial_long_to_wide_uid = partial(long_to_wide_uid,
-                                       full_columns=long_df.columns,
+                                       columns=cols_wide,
                                        cols_to_parse=cols_to_parse)
 
     with mp.Pool(threads) as pool:
