@@ -154,6 +154,9 @@ def long_to_wide(long_df, cols_to_parse=None,
     if threads is None:
         threads = mp.cpu_count()
 
+    long_df = long_df.set_index('unique_id')
+    long_df = dd.from_pandas(long_df, npartitions=threads, sort=False)
+
     if cols_to_parse is None:
         cols_to_parse = set(long_df.columns) - {'unique_id'}
 
@@ -162,14 +165,14 @@ def long_to_wide(long_df, cols_to_parse=None,
 
     assert len(cols_to_parse) == len(cols_wide), 'Cols to parse and cols wide must have the same len'
 
-    partial_long_to_wide_uid = partial(long_to_wide_uid,
-                                       columns=cols_wide,
-                                       cols_to_parse=cols_to_parse)
+    df_list = []
+    for new_col, col in zip(cols_wide, cols_to_parse):
+        df = long_df.groupby('unique_id').apply(lambda df: df[col].values).compute()
+        df = df.rename(new_col)
+        df = df.to_frame()
+        df_list.append(df)
 
-    with mp.Pool(threads) as pool:
-        wide_df = pool.starmap(partial_long_to_wide_uid, long_df.groupby('unique_id'))
-
-    wide_df = pd.concat(wide_df).reset_index(drop=True)
+    wide_df = pd.concat(df_list, 1).reset_index()
 
     return wide_df
 
