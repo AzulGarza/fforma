@@ -138,9 +138,8 @@ def long_to_horizontal(long_df):
         horizontal_df[col] = values
 
     horizontal_df['unique_id'] = unique_ids
+    
     return horizontal_df
-
-from time import time
 
 def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):
     if x_cols is None:
