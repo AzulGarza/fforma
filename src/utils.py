@@ -167,10 +167,13 @@ def long_to_wide(long_df, cols_to_parse=None,
 
     df_list = []
     for new_col, col in zip(cols_wide, cols_to_parse):
-        df = long_df.groupby('unique_id').apply(lambda df: df[col].values).compute()
+        df = long_df[col].groupby('unique_id').apply(lambda df: df.values)
         df = df.rename(new_col)
         df = df.to_frame()
         df_list.append(df)
+
+    with ProgressBar():
+        df_list = compute(*df_list)
 
     wide_df = pd.concat(df_list, 1).reset_index()
 

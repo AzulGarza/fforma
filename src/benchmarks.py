@@ -140,6 +140,8 @@ def long_to_horizontal(long_df):
     horizontal_df['unique_id'] = unique_ids
     return horizontal_df
 
+from time import time
+
 def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):
     if x_cols is None:
         x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
@@ -148,10 +150,10 @@ def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):
                                 cols_wide=['ds', 'X'],
                                 threads=threads)
     y_horizontal = long_to_wide(y_df, threads=threads)
+
     train_df = x_horizontal.merge(y_horizontal, on='unique_id', how='outer')
 
-    for i, row in train_df.iterrows():
-        assert len(row['ds_x'])==len(row['ds_y']), 'ds_x and ds_y not corresponding'
+    assert (train_df['ds_x'].apply(len) == train_df['ds_y'].apply(len)).sum() == len(train_df), 'ds_x and ds_y not corresponding'
 
     train_df['ds'] = train_df['ds_x']
 
