@@ -397,6 +397,26 @@ class RandomWalkDrift(BaseEstimator, RegressorMixin):
 
         return y_hat
 
+class Average(BaseEstimator, RegressorMixin):
+    """
+    MovingAverage:
+    Benchmark model suited for stationary time series.
+    The moving or rolling average, acts as a convolution that filters,
+    high frequency components of a signal, by smoothing it.
+    The prediction is based on the average of the last n_window observations.
+    """
+    def __init__(self):
+        pass
+
+    def fit(self, X, y):
+        self.average_ = np.mean(y)
+        return self
+
+    def predict(self, X):
+        h = X.shape[0]
+        preds = np.repeat(self.average_, h)
+        return preds
+
 
 class MovingAverage(BaseEstimator, RegressorMixin):
     """
@@ -406,8 +426,7 @@ class MovingAverage(BaseEstimator, RegressorMixin):
     high frequency components of a signal, by smoothing it.
     The prediction is based on the average of the last n_window observations.
     """
-    def __init__(self, h, n_obs):
-        self.h = h
+    def __init__(self, n_obs=2):
         self.n_obs = n_obs
 
     def fit(self, X, y):
@@ -416,7 +435,8 @@ class MovingAverage(BaseEstimator, RegressorMixin):
         return self
 
     def predict(self, X):
-        preds = np.tile(self.moving_average_, self.h)
+        h = X.shape[0]
+        preds = np.tile(self.moving_average_, h)
         return preds
 
 
@@ -428,7 +448,7 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
     for each season of the time series. The prediction is based on the average of
     the last n_window observations for each season.
     """
-    def __init__(self, seasonality, n_seasons):
+    def __init__(self, seasonality, n_seasons=2):
         self.seasonality = seasonality
         self.n_seasons = n_seasons
 
@@ -444,7 +464,7 @@ class SeasonalMovingAverage(BaseEstimator, RegressorMixin):
         return self
 
     def predict(self, X):
-        h = len(X)
+        h = X.shape[0]
 
         idxs = [i % self.seasonality for i in range(h)]
 
@@ -485,12 +505,9 @@ class QRAL1(BaseEstimator, RegressorMixin):
     refines selection of important features
     at different quantile levels.
     """
-    def __init__(self, tau, lambd):
-        self.tau = cp.Parameter(nonneg=True)
-        self.lambd = cp.Parameter(nonneg=True)
-
-        self.tau.value = tau
-        self.lambd.value = lambd
+    def __init__(self, tau=0.5, lambd=1):
+        self.tau = tau
+        self.lambd = lambd
 
     def _pinball(self, X, y, beta, tau):
         y_hat = X @ beta
@@ -516,8 +533,14 @@ class QRAL1(BaseEstimator, RegressorMixin):
         beta = cp.Variable(n)
 
         # Optimize
+        tau = cp.Parameter(nonneg=True)
+        lambd = cp.Parameter(nonneg=True)
+
+        tau.value = self.tau
+        lambd.value = self.lambd
+
         obj_fn = self.objective_fn(X=X, y=y, beta=beta,
-                                   tau=self.tau, lambd=self.lambd)
+                                   tau=tau, lambd=lambd)
         problem = cp.Problem(cp.Minimize(obj_fn))
         try:
             problem.solve()
@@ -629,6 +652,10 @@ class Croston(BaseEstimator, RegressorMixin):
 
     def fit(self, X, y):
         yd = demand(y)
+        if yd.size == 0:
+            self.pred_ = 0
+            return self
+
         yi = intervals(y)
 
         if self.kind == 'optimized':
@@ -677,6 +704,10 @@ class TSB(BaseEstimator, RegressorMixin):
         n = len(y)
         p = probability(y)
         z = demand(y)
+
+        if z.size == 0:
+            self.pred_ = 0
+            return self
 
         a = np.array([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.8])
         b = np.array([0.01,0.02,0.03,0.05,0.1,0.2,0.3])
@@ -735,7 +766,13 @@ class ADIDA(BaseEstimator, RegressorMixin):
         pass
 
     def fit(self, X, y):
-        al = int(round(intervals(y).mean()))
+
+        inters = intervals(y)
+        if inters.size == 0:
+            self.al_ = 0
+            return self
+
+        al = int(round(inters.mean()))
         lost_remainder_data = len(y) % al
         AS = [sum(equal_sized_chunk) for equal_sized_chunk \
               in chunks(y[lost_remainder_data:], al)]
@@ -760,7 +797,12 @@ class iMAPA(BaseEstimator, RegressorMixin):
         pass
 
     def fit(self, X, y):
-        mal = int(round(intervals(y).mean()))
+        inters = intervals(y)
+        if inters.size == 0:
+            self.frc_ = 0
+            return self
+
+        mal = int(round(inters.mean()))
         frc = []
         for al in range(1, mal + 1):
             lost_remainder_data = len(y) % al
