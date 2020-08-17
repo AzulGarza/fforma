@@ -19,10 +19,7 @@ from statsmodels.api import add_constant
 import numpy as np
 import pandas as pd
 
-from src.l1qr import L1QR
-
 from src.metrics.metrics import smape, mape
-
 from src.base_models import FQRA, QRAL1
 from src.meta_model import MetaModels
 from src.utils import long_to_wide
@@ -138,7 +135,7 @@ def long_to_horizontal(long_df):
         horizontal_df[col] = values
 
     horizontal_df['unique_id'] = unique_ids
-    
+
     return horizontal_df
 
 def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):

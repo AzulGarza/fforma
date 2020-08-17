@@ -49,6 +49,63 @@ GRID_FFORMA1 = {'model_type': ['fforma'],
                 'colsample_bytree': np.arange(0.5, 1, 0.1),
                 'grid_id': ['grid_fforma1']}
 
+GRID_FFORMA2 = {'model_type': ['fforma'],
+                'n_estimators': np.arange(1, 20, 1),
+                'eta': np.arange(0.01, 1, 0.01),
+                'max_depth': np.arange(6, 15, 1),
+                'subsample': np.arange(0.5, 1, 0.1),
+                'colsample_bytree': np.arange(0.5, 1, 0.1),
+                'grid_id': ['grid_fforma2']}
+
+GRID_FFORMA3 = {'model_type': ['fforma'],
+                'n_estimators': [1, 2, 3],
+                'eta': np.arange(0.57, 0.9, 0.01),
+                'max_depth': [6, 7, 8, 9],
+                'subsample': [0.6, 0.7, 0.8],
+                'colsample_bytree': [0.7, 0.8, 0.9],
+                'grid_id': ['grid_fforma3']}
+
+GRID_FFORMA4 = {'model_type': ['fforma'],
+                'n_estimators': [1, 2, 3],
+                'eta': np.arange(0.8, 1.3, 0.01),
+                'max_depth': [6, 7, 8, 9],
+                'subsample': [0.6, 0.7, 0.8],
+                'colsample_bytree': [0.7, 0.8, 0.9],
+                'grid_id': ['grid_fforma4']}
+
+GRID_FFORMA5 = {'model_type': ['fforma'],
+                'n_estimators': [1, 2, 3],
+                'eta': np.arange(1.1, 2, 0.01),
+                'max_depth': [6, 7, 8, 9],
+                'subsample': [0.6, 0.7, 0.8],
+                'colsample_bytree': [0.7, 0.8, 0.9],
+                'grid_id': ['grid_fforma5']}
+
+GRID_FFORMA6 = {'model_type': ['fforma'],
+                'n_estimators': [1, 2, 3],
+                'eta': np.arange(1.9, 3, 0.01),
+                'max_depth': [6, 7, 8, 9],
+                'subsample': [0.6, 0.7, 0.8],
+                'colsample_bytree': [0.7, 0.8, 0.9],
+                'grid_id': ['grid_fforma6']}
+
+GRID_FFORMA7 = {'model_type': ['fforma'],
+                'n_estimators': np.arange(1, 100, 1),
+                'eta': np.arange(0.01, 2, 0.05),
+                'max_depth': np.arange(6, 15, 1),
+                'subsample': np.arange(0.5, 1, 0.1),
+                'colsample_bytree': np.arange(0.5, 1, 0.1),
+                'grid_id': ['grid_fforma7']}
+
+GRID_FFORMA8 = {'model_type': ['fforma'],
+                'n_estimators': np.arange(1, 3, 1),
+                'eta': np.arange(1.8, 4, 0.05),
+                'max_depth': np.arange(6, 15, 1),
+                'subsample': np.arange(0.1, 0.5, 0.1),
+                'colsample_bytree': np.arange(0.5, 1, 0.1),
+                'grid_id': ['grid_fforma8']}
+
+
 GRID_FFORMAM4 = {'model_type': ['fforma'],
                 'n_estimators': [94],
                 'eta': [0.58],
@@ -123,19 +180,35 @@ GRID_QFFORMA3 = {'model_type': ['qfforma'],
 
 GRID_QFFORMA4 = {'model_type': ['qfforma'],
                  'n_epochs' : [5, 10],
-                 'lr': [1e-5, 5e-5, 7e-5],
+                 'lr': [1e-2, 1e-3, 7e-5],
                  'batch_size': [64],
                  'gradient_eps': [1e-8],
                  'weight_decay': [0],
                  #'lr_scheduler_step_size': [10],
                  'lr_decay': [0.5, 0.8, 1],
-                 'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
+                 'dropout': [0.0, 0.1],
                  'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]', '[400, 200, 100, 50, 25]'],
                  'use_softmax': [True],
                  'train_percentile': [0.45, 0.5, 0.51, 0.55],
                  'display_step': [1],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma4']}
+
+GRID_QFFORMA5 = {'model_type': ['qfforma'],
+                 'n_epochs' : [10, 15, 20, 25],
+                 'lr': [1e-2],
+                 'batch_size': [64],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [0.5, 0.8, 1],
+                 'dropout': [0.0],
+                 'layers': ['[400, 200, 100, 50, 25]'],
+                 'use_softmax': [True],
+                 'train_percentile': [0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
+                 'display_step': [1],
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma5']}
 
 GRID_QFFORMATEST = {'model_type': ['qfforma'],
                      'n_epochs' : [5, 10],
@@ -162,17 +235,17 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                                       'M3': QRID_NAIVE,
                                       'TOURISM': QRID_NAIVE},
                     'qra': {'M4': GRID_QRA1,
-                            'M3': GRID_QRA1,
+                            'M3': GRID_QRA3,
                             'TOURISM': GRID_QRA3},
                     'fqra': {'M4': GRID_FQRA1,
                              'M3': GRID_FQRA1,
                              'TOURISM': GRID_FQRA1},
                     'fforma': {'M4': GRID_FFORMAM4,
-                               'M3': GRID_FFORMA1,
+                               'M3': GRID_FFORMA8,
                                'TOURISM': GRID_FFORMA1},
                     'qfforma': {'M4': GRID_QFFORMA4,
-                                'M3': GRID_QFFORMA1,
-                                'TOURISM': GRID_QFFORMATEST}}
+                                'M3': GRID_QFFORMA2,
+                                'TOURISM': GRID_QFFORMA5}}
 
 #############################################################################
 # COMMON
@@ -399,7 +472,7 @@ def train_fforma(data, grid_dir, model_specs_df, args):
     y_test_df = data['y_test_df']
     errors = data['fforma_errors']
 
-    from meta_learner import MetaLearnerXGBoost
+    from fforma.meta_learner import MetaLearnerXGBoost
 
     for i in range(args.start_id, args.end_id):
 
@@ -441,9 +514,9 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
     import torch
-    from fforma import FFORMA
-    from metrics.pytorch_metrics import WeightedPinballLoss
-    from meta_learner import MetaLearnerNN
+    from src.fforma import FFORMA
+    from src.metrics.pytorch_metrics import WeightedPinballLoss
+    from src.meta_learner import MetaLearnerNN
     #from utils import evaluate_model_prediction
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

@@ -16,7 +16,6 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.utils.validation import check_is_fitted
-from src.l1qr import L1QR
 from ESRNN.m4_data import prepare_m4_data
 from ESRNN.utils_evaluation import evaluate_prediction_owa
 from dask import delayed, compute
@@ -154,8 +153,8 @@ def long_to_wide(long_df, cols_to_parse=None,
     if threads is None:
         threads = mp.cpu_count()
 
-    long_df = long_df.set_index('unique_id')
-    long_df = dd.from_pandas(long_df, npartitions=threads, sort=False)
+    long_df_dask = long_df.set_index('unique_id')
+    long_df_dask = dd.from_pandas(long_df_dask, npartitions=threads)
 
     if cols_to_parse is None:
         cols_to_parse = set(long_df.columns) - {'unique_id'}
@@ -167,7 +166,7 @@ def long_to_wide(long_df, cols_to_parse=None,
 
     df_list = []
     for new_col, col in zip(cols_wide, cols_to_parse):
-        df = long_df[col].groupby('unique_id').apply(lambda df: df.values)
+        df = long_df_dask[col].groupby('unique_id').apply(lambda df: df.values)
         df = df.rename(new_col)
         df = df.to_frame()
         df_list.append(df)
@@ -179,31 +178,42 @@ def long_to_wide(long_df, cols_to_parse=None,
 
     return wide_df
 
-def evaluate_batch(batch, metric, metric_name):
+def evaluate_batch(batch, metric, metric_name, seasonality):
     df_losses = pd.DataFrame(index=batch.index.unique())
     df_losses[metric_name] = None
 
     for uid, df in batch.groupby('unique_id'):
-        y = df['y'].values
-        y_hat = df['y_hat'].values
+        y = df['y'].values.item()
+        y_hat = df['y_hat'].values.item()
 
-        loss = metric(y, y_hat)
+        if metric_name in ['mase']:
+            y_train = df['y_train'].values.item()
+            loss = metric(y, y_hat, y_train, seasonality)
+        else:
+            loss = metric(y, y_hat)
         df_losses.loc[uid, metric_name] = loss
 
     return df_losses
 
-def evaluate_panel(y_panel, y_hat_panel, metric, y_train_df=None):
+def evaluate_panel(y_panel, y_hat_panel, metric, y_train_df=None,
+                   seasonality=None):
     """
     """
-    metric_name = metric.__code__.co_name
+    metric_name = metric.__name__
     y_df = y_panel.merge(y_hat_panel, how='left', on=['unique_id', 'ds'])
-    y_df = y_df.set_index('unique_id')
+    y_df = long_to_wide(y_df)
 
+    if y_train_df is not None:
+        wide_y_train_df = long_to_wide(y_train_df).rename(columns={'y': 'y_train'})
+        y_df = y_df.merge(wide_y_train_df, how='left', on=['unique_id'])
+
+    y_df = y_df.set_index('unique_id')
     parts = mp.cpu_count() - 1
     y_df_dask = dd.from_pandas(y_df, npartitions=parts).to_delayed()
 
     evaluate_batch_p = partial(evaluate_batch, metric=metric,
-                               metric_name=metric_name)
+                               metric_name=metric_name,
+                               seasonality=seasonality)
 
     task = [delayed(evaluate_batch_p)(part) for part in y_df_dask]
 
@@ -223,14 +233,15 @@ def set_y_hat(df, col, drop_y=True):
 
     return df
 
-def evaluate_models(y_test_df, models_panel, metric, y_train_df=None):
+def evaluate_models(y_test_df, models_panel, metric, y_train_df=None,
+                    seasonality=1):
     models = set(models_panel.columns) - {'unique_id', 'ds'}
     metric_name = metric.__name__
 
     list_losses = []
     for model in models:
         y_hat_df = set_y_hat(models_panel, model, False)
-        loss = evaluate_panel(y_test_df, y_hat_df, metric, y_train_df)
+        loss = evaluate_panel(y_test_df, y_hat_df, metric, y_train_df, seasonality)
         loss = loss.rename(columns={metric_name: model})
         loss = loss.set_index('unique_id')
         list_losses.append(loss)

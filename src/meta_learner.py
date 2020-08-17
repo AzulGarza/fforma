@@ -20,8 +20,8 @@ from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import StepLR
 
-from src.meta_evaluation import calc_errors_widing
 from tsfeatures.metrics import evaluate_panel
+from src.meta_evaluation import calc_errors_widing
 from src.metrics.metrics import mape, smape
 from src.metrics.pytorch_metrics import WeightedSMAPE2Loss, WeightedMAPELoss
 
@@ -212,16 +212,17 @@ class MetaLearnerXGBoost(object):
             verbose_eval=verbose
         )
 
-        y_hat_df = self.predict(X_test_df,
-                                base_model_preds=preds_test_df)
+        if X_test_df is not None:
+            y_hat_df = self.predict(X_test_df,
+                                    base_model_preds=preds_test_df)
 
-        y_hat_df = y_hat_df.sort_values(['unique_id', 'ds'])
-        y_test_df = y_test_df.sort_values(['unique_id', 'ds'])
+            y_hat_df = y_hat_df.sort_values(['unique_id', 'ds'])
+            y_test_df = y_test_df.sort_values(['unique_id', 'ds'])
 
-        self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                             y_train=None, metric=smape)['error'].mean()
-        self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
-                                            y_train=None, metric=mape)['error'].mean()
+            self.test_min_smape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                                 y_train=None, metric=smape)['error'].mean()
+            self.test_min_mape = evaluate_panel(y_test=y_test_df, y_hat=y_hat_df,
+                                                y_train=None, metric=mape)['error'].mean()
 
         return self
 
@@ -469,20 +470,22 @@ class MetaLearnerNN(object):
             self.train_loss = np.mean(epoch_losses)
 
             if verbose and (epoch % self.params['display_step'] == 0):
-                test_mape = self.evaluate_performance(test_loader, 'mape')
-                test_smape = self.evaluate_performance(test_loader, 'smape')
-
-                if test_mape < self.test_min_mape:
-                    self.test_min_mape = test_mape
-
-                if test_smape < self.test_min_smape:
-                    self.test_min_smape = test_smape
-
                 print("Epoch:", '%d,' % (epoch + 1),
                       "Time: {:03.3f},".format(time.time()-start),
-                      "Loss: {:.4f},".format(self.train_loss),
-                      "Test SMAPE: {:.4f},".format(test_smape),
-                      "Test MAPE: {:.4f}".format(test_mape))
+                      "Loss: {:.4f},".format(self.train_loss))
+
+                if X_df_test is not None:
+                    test_mape = self.evaluate_performance(test_loader, 'mape')
+                    test_smape = self.evaluate_performance(test_loader, 'smape')
+
+                    if test_mape < self.test_min_mape:
+                        self.test_min_mape = test_mape
+
+                    if test_smape < self.test_min_smape:
+                        self.test_min_smape = test_smape
+
+                    print("Test SMAPE: {:.4f},".format(test_smape),
+                          "Test MAPE: {:.4f}".format(test_mape))
 
         return self
 
@@ -522,4 +525,3 @@ class MetaLearnerNN(object):
         y_hat = np.hstack(y_hat)
 
         return y_hat
-
