@@ -36,6 +36,18 @@ GRID_QRA3 = {'model_type': ['qra'],
              'penalty': [5, 10, 15, 20, 25],
              'grid_id': ['grid_qra3']}
 
+GRID_QRA4 = {'model_type': ['qra'],
+             'tau': [0.5, 0.48, 0.49, 0.51, 0.52],
+             'penalty': [25, 30, 35, 40, 45],
+             'grid_id': ['grid_qra4']}
+
+GRID_QRA5 = {'model_type': ['qra'],
+             'tau': [0.5, 0.48, 0.49, 0.51, 0.52],
+             'penalty': [31, 32,33, 34, 35, 36, 37, 38, 35],
+             'grid_id': ['grid_qra5']}
+
+
+
 GRID_FQRA1 = {'model_type': ['fqra'],
               'tau': [0.45, 0.48, 0.5, 0.53, 0.55],
               'n_components': [1],

@@ -138,7 +138,7 @@ def long_to_horizontal(long_df):
 
     return horizontal_df
 
-def train_to_horizontal(X_df, y_df, x_cols=None, threads=mp.cpu_count()):
+def train_to_horizontal(X_df, y_df, x_cols=None, threads=8):
     if x_cols is None:
         x_cols = list(set(X_df.columns)-set(['unique_id','ds']))
 
@@ -291,6 +291,7 @@ class LassoQuantileRegressionAveraging:
 
         self.meta_model = MetaModels(models=self.model, scheduler=self.scheduler)
         self.meta_model.fit(y_panel_df=train_df)
+        self.meta_model.scheduler = 'single-threaded'
 
         y_hat_df = self.meta_model.predict(test_df)
         y_hat_df = y_hat_df[['unique_id','ds','LQRA']]
@@ -314,6 +315,6 @@ class LassoQuantileRegressionAveraging:
     def predict(self, X_df):
         """
         """
-        y_hat = self.meta_model.y_hat_df
+        y_hat = self.y_hat_df
 
         return y_hat
