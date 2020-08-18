@@ -238,6 +238,22 @@ GRID_QFFORMA6 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma6']}
 
+GRID_QFFORMA7 = {'model_type': ['qfforma'],
+                 'n_epochs' : [5, 10],
+                 'lr': [1e-2, 1e-3],
+                 'batch_size': [32, 128],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0, 0.1, 0.3, 0.5],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [0.1, 0.5, 1],
+                 'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
+                 'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]', '[512, 256, 128]'],
+                 'use_softmax': [True],
+                 'train_percentile': [0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
+                 'display_step': [1],
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma7']}
+
 GRID_QFFORMATEST = {'model_type': ['qfforma'],
                      'n_epochs' : [5, 10],
                      'lr': [1e-5, 5e-5, 7e-5],
