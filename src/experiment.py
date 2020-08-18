@@ -287,7 +287,7 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                     'fforma': {'M4': GRID_FFORMAM4,
                                'M3': GRID_FFORMA8,
                                'TOURISM': GRID_FFORMA1},
-                    'qfforma': {'M4': GRID_QFFORMA6,
+                    'qfforma': {'M4': GRID_QFFORMA7,
                                 'M3': GRID_QFFORMA2,
                                 'TOURISM': GRID_QFFORMA5}}
 
