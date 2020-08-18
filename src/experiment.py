@@ -222,6 +222,22 @@ GRID_QFFORMA5 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma5']}
 
+GRID_QFFORMA6 = {'model_type': ['qfforma'],
+                 'n_epochs' : [5, 10],
+                 'lr': [1e-2, 5e-2, 0.1, 1e-3],
+                 'batch_size': [64],
+                 'gradient_eps': [1e-8],
+                 'weight_decay': [0, 0.1, 0.3, 0.5],
+                 #'lr_scheduler_step_size': [10],
+                 'lr_decay': [1],
+                 'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
+                 'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]'],
+                 'use_softmax': [True],
+                 'train_percentile': [0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
+                 'display_step': [1],
+                 'random_seed': [1],
+                 'grid_id': ['grid_qfforma6']}
+
 GRID_QFFORMATEST = {'model_type': ['qfforma'],
                      'n_epochs' : [5, 10],
                      'lr': [1e-5, 5e-5, 7e-5],
@@ -255,7 +271,7 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                     'fforma': {'M4': GRID_FFORMAM4,
                                'M3': GRID_FFORMA8,
                                'TOURISM': GRID_FFORMA1},
-                    'qfforma': {'M4': GRID_QFFORMA4,
+                    'qfforma': {'M4': GRID_QFFORMA6,
                                 'M3': GRID_QFFORMA2,
                                 'TOURISM': GRID_QFFORMA5}}
 
