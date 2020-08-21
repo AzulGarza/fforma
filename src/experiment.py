@@ -218,7 +218,7 @@ GRID_QFFORMA5 = {'model_type': ['qfforma'],
                  'layers': ['[400, 200, 100, 50, 25]'],
                  'use_softmax': [True],
                  'train_percentile': [0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
-                 'display_step': [1],
+                 'display_step': [8],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma5']}
 
@@ -270,21 +270,21 @@ GRID_QFFORMA8 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma8']}
 
-GRID_QFFORMA9 = {'model_type': ['qfforma'],
-                 'n_epochs' : [10],
-                 'lr': [1e-3, 0.1],
-                 'batch_size': [192, 200, 150, 128, 256],
-                 'gradient_eps': [1e-8],
-                 'weight_decay': [0, 0.5],
-                 #'lr_scheduler_step_size': [10],
-                 'lr_decay': [0.5],
-                 'dropout': [0.3],
-                 'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]'],
-                 'use_softmax': [True],
-                 'train_percentile': [0.5, 0.51],
-                 'display_step': [1],
-                 'random_seed': [1],
-                 'grid_id': ['grid_qfforma9']}
+GRID_QFFORMA_STEST = {'model_type': ['qfforma'],
+                      'n_epochs' : [10],
+                      'lr': [1e-3],
+                      'batch_size': [200],
+                      'gradient_eps': [1e-8],
+                      'weight_decay': [0.5],
+                      'lr_scheduler_step_size': [9],
+                      'lr_decay': [0.1],
+                      'dropout': [0.3],
+                      'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]'],
+                      'use_softmax': [True],
+                      'train_percentile': [0.5],
+                      'display_step': [1],
+                      'random_seed': [1],
+                      'grid_id': ['simple_test']}
 
 
 GRID_QFFORMATEST = {'model_type': ['qfforma'],
@@ -293,7 +293,7 @@ GRID_QFFORMATEST = {'model_type': ['qfforma'],
                      'batch_size': [64],
                      'gradient_eps': [1e-8],
                      'weight_decay': [0, 1, 2],
-                     #'lr_scheduler_step_size': [10],
+                     'lr_scheduler_step_size': [10],
                      'lr_decay': [0.5, 0.8, 1],
                      'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
                      'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]', '[400, 200, 100, 50, 25]'],
@@ -320,7 +320,7 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                     'fforma': {'M4': GRID_FFORMAM4,
                                'M3': GRID_FFORMA8,
                                'TOURISM': GRID_FFORMA1},
-                    'qfforma': {'M4': GRID_QFFORMA9,
+                    'qfforma': {'M4': GRID_QFFORMA_STEST,
                                 'M3': GRID_QFFORMA2,
                                 'TOURISM': GRID_QFFORMA5}}
 
@@ -607,7 +607,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         print(mc)
         print(47*'=' + '\n')
 
-        lr_scheduler_step_size = max(mc.n_epochs // 3, 2)
+        lr_scheduler_step_size = max(mc.n_epochs // 3, 2) if not hasattr(mc, 'lr_scheduler_step_size') else mc.lr_scheduler_step_size
 
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
