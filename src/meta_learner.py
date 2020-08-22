@@ -469,10 +469,11 @@ class MetaLearnerNN(object):
             lr_scheduler.step()
             self.train_loss = np.mean(epoch_losses)
 
-            if verbose and (epoch % self.params['display_step'] == 0):
-                print("Epoch:", '%d,' % (epoch + 1),
-                      "Time: {:03.3f},".format(time.time()-start),
-                      "Loss: {:.4f},".format(self.train_loss))
+            if ((epoch + 1) % self.params['display_step']) == 0:
+                if verbose:
+                    print("Epoch:", '%d,' % (epoch + 1),
+                          "Time: {:03.3f},".format(time.time()-start),
+                          "Loss: {:.4f},".format(self.train_loss))
 
                 if X_df_test is not None:
                     test_mape = self.evaluate_performance(test_loader, 'mape')
@@ -484,8 +485,9 @@ class MetaLearnerNN(object):
                     if test_smape < self.test_min_smape:
                         self.test_min_smape = test_smape
 
-                    print("Test SMAPE: {:.4f},".format(test_smape),
-                          "Test MAPE: {:.4f}".format(test_mape))
+                    if verbose:
+                        print("Test SMAPE: {:.4f},".format(test_smape),
+                              "Test MAPE: {:.4f}".format(test_mape))
 
         return self
 
