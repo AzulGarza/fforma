@@ -271,19 +271,19 @@ GRID_QFFORMA8 = {'model_type': ['qfforma'],
                  'grid_id': ['grid_qfforma8']}
 
 GRID_QFFORMA_STEST = {'model_type': ['qfforma'],
-                      'n_epochs' : [10],
-                      'lr': [1e-3],
-                      'batch_size': [200],
+                      'n_epochs' : [49],
+                      'lr': [0.011737006920320418,],
+                      'batch_size': [16],
                       'gradient_eps': [1e-8],
-                      'weight_decay': [0.5],
-                      'lr_scheduler_step_size': [9],
-                      'lr_decay': [0.1],
-                      'dropout': [0.3],
+                      'weight_decay': [0.013538437919335407],
+                      'lr_scheduler_step_size': [11],
+                      'lr_decay': [0.1003490817198572],
+                      'dropout': [0.4165966328090256],
                       'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]'],
                       'use_softmax': [True],
-                      'train_percentile': [0.5],
+                      'train_percentile': [0.4872830957021617],
                       'display_step': [1],
-                      'random_seed': [1],
+                      'random_seed': [66],
                       'grid_id': ['simple_test']}
 
 
