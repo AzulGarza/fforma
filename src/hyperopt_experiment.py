@@ -187,7 +187,7 @@ def train_qfforma(data, args):
         model_params['batch_size'] = int(model_params['batch_size'])
         model_params['n_epochs'] = int(model_params['n_epochs'])
 
-        model_params['display_step'] = model_params['n_epochs']
+        model_params['display_step'] = 1#model_params['n_epochs']
         # Instantiate, fit
         model = FFORMA(meta_learner_params=model_params,
                        meta_learner=MetaLearnerNN,
