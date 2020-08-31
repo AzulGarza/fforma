@@ -4,6 +4,7 @@
 import torch as t
 import torch.nn as nn
 import multiprocessing as mp
+import numpy as np
 import pandas as pd
 
 from functools import partial
@@ -16,7 +17,7 @@ def divide_no_nan(a, b):
     """
     result = a / b
     result[result != result] = .0
-    result[result == float('inf')] = .0
+    result[result == np.inf] = .0
 
     return result
 
@@ -243,6 +244,46 @@ class WeightedPinballLoss(nn.Module):
         pinball = t.mean(pinball)
         return pinball
 
+class ScaledWeightedPinballLoss(nn.Module):
+    """WeightedPinball Loss
+    Computes the weighted pinball loss between y and y_hat.
+
+    Parameters
+    ----------
+    y: tensor (batch_size, output_size)
+        actual values in torch tensor.
+    y_hat: tensor (batch_size, output_size)
+        predicted values in torch tensor.
+    tau: float, between 0 and 1
+        the slope of the pinball loss, in the context of
+        quantile regression, the value of tau determines the
+        conditional quantile level.
+
+    Returns
+    -------
+    pinball:
+        scaled-weighted accuracy for the predicted quantile
+    """
+    def __init__(self, tau=0.5):
+        super(ScaledWeightedPinballLoss, self).__init__()
+        self.tau = tau
+
+    def forward(self, y, y_hat, weights):
+        scale = t.abs(y_hat) + t.abs(y)
+        scale[scale == 0] = 1
+        #scale = t.sum(scale, dim=1)
+
+        delta_y = t.sub(y, y_hat)
+
+        pinball = t.max(t.mul(self.tau, delta_y), t.mul((self.tau - 1), delta_y))
+        #pinball = t.sum(pinball, dim=1)
+        pinball = t.div(pinball, scale)
+        pinball = t.sum(pinball, dim=1)
+        pinball = t.mul(weights, pinball)
+
+        pinball = 200 * t.mean(pinball)
+        return pinball
+
 class WeightedMAPELoss(nn.Module):
     """MAPE Loss
     """
@@ -263,8 +304,8 @@ class WeightedSMAPE2Loss(nn.Module):
         super(WeightedSMAPE2Loss, self).__init__()
 
     def forward(self, y, y_hat, weights):
-        delta_y = t.abs((y - y_hat))
-        scale = t.abs(y) + t.abs(y_hat)
+        delta_y = t.abs(y - y_hat)
+        scale = t.abs(y.data) + t.abs(y_hat.data)
 
         smape = divide_no_nan(delta_y, scale)
         smape = t.sum(smape, dim=1)

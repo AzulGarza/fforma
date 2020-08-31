@@ -207,9 +207,9 @@ GRID_QFFORMA4 = {'model_type': ['qfforma'],
                  'grid_id': ['grid_qfforma4']}
 
 GRID_QFFORMA5 = {'model_type': ['qfforma'],
-                 'n_epochs' : [10, 15, 20, 25],
+                 'n_epochs': [100], #[10, 15, 20, 25],
                  'lr': [1e-2],
-                 'batch_size': [64],
+                 'batch_size': [32, 64],
                  'gradient_eps': [1e-8],
                  'weight_decay': [0],
                  #'lr_scheduler_step_size': [10],
@@ -218,7 +218,7 @@ GRID_QFFORMA5 = {'model_type': ['qfforma'],
                  'layers': ['[400, 200, 100, 50, 25]'],
                  'use_softmax': [True],
                  'train_percentile': [0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
-                 'display_step': [8],
+                 'display_step': [1],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma5']}
 
@@ -270,20 +270,38 @@ GRID_QFFORMA8 = {'model_type': ['qfforma'],
                  'random_seed': [1],
                  'grid_id': ['grid_qfforma8']}
 
+GRID_QFFORMANBEATS = {'model_type': ['qfforma'],
+                     'n_epochs': [100], #[10, 15, 20, 25],
+                     'lr': [1e-2],
+                     'batch_size': [32, 64],
+                     'gradient_eps': [1e-8],
+                     'weight_decay': [0],
+                     #'lr_scheduler_step_size': [10],
+                     'lr_decay': [0.5, 0.8, 1],
+                     'dropout': [0.0],
+                     'layers': ['[400, 200, 100, 50, 25]'],
+                     'use_softmax': [True],
+                     'train_percentile': [0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
+                     'display_step': [1],
+                     'random_seed': [1],
+                     'grid_id': ['grid_qfforma_nbeats']}
+
 GRID_QFFORMA_STEST = {'model_type': ['qfforma'],
                       'n_epochs' : [49],
-                      'lr': [0.011737006920320418,],
-                      'batch_size': [16],
+                      'lr': [0.001],#[0.011737006920320418],
+                      'batch_size': [512],
                       'gradient_eps': [1e-8],
                       'weight_decay': [0.013538437919335407],
-                      'lr_scheduler_step_size': [11],
+                      'lr_scheduler_step_size': [1100],
                       'lr_decay': [0.1003490817198572],
                       'dropout': [0.4165966328090256],
                       'layers': ['[512, 256, 128, 64, 32, 16, 8, 4, 2]'],
                       'use_softmax': [True],
-                      'train_percentile': [0.4872830957021617],
+                      'train_percentile': [0.53],
                       'display_step': [1],
                       'random_seed': [66],
+                      'momentum': [0.1],
+                      'nesterov': [True],
                       'grid_id': ['simple_test']}
 
 
@@ -322,7 +340,7 @@ ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
                                'TOURISM': GRID_FFORMA1},
                     'qfforma': {'M4': GRID_QFFORMA_STEST,
                                 'M3': GRID_QFFORMA2,
-                                'TOURISM': GRID_QFFORMA5}}
+                                'TOURISM': GRID_QFFORMANBEATS}}
 
 #############################################################################
 # COMMON
@@ -592,7 +610,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
 
     import torch
     from src.fforma import FFORMA
-    from src.metrics.pytorch_metrics import WeightedPinballLoss
+    from src.metrics.pytorch_metrics import WeightedPinballLoss, ScaledWeightedPinballLoss
     from src.meta_learner import MetaLearnerNN
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -619,7 +637,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
                         'dropout': mc.dropout,
                         'layers': ast.literal_eval(mc.layers),
                         'use_softmax': mc.use_softmax,
-                        'loss_function': WeightedPinballLoss(mc.train_percentile),
+                        'loss_function': ScaledWeightedPinballLoss(mc.train_percentile),
                         'display_step': int(mc.display_step),
                         'random_seed': int(mc.random_seed),
                         'device': device}
