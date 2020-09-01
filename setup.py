@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        'lightgbm',
+        'lightgbm==2.3.1',
         'tqdm',
     ]
 )
