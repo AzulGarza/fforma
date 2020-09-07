@@ -284,7 +284,7 @@ class ScaledWeightedPinballLoss(nn.Module):
         pinball = 200 * t.mean(pinball)
         return pinball
 
-def pinball_loss(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor, tau: float) -> t.float:
+def pinball_loss_1(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor, tau: float) -> t.float:
     """
     MAPE loss as defined in: https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
     :param forecast: Forecast values. Shape: batch, time
@@ -293,6 +293,23 @@ def pinball_loss(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor, tau: floa
     :return: Loss value
     """
     weights = divide_no_nan(mask, t.abs(target.data) + t.abs(forecast.data))
+    delta_y = t.sub(target, forecast)
+
+    pinball = t.max(t.mul(tau, delta_y), t.mul((tau - 1), delta_y))
+    pinball = pinball * weights
+    pinball = t.sum(pinball) / t.sum(mask)
+
+    return 100 * pinball
+
+def pinball_loss_2(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor, tau: float) -> t.float:
+    """
+    MAPE loss as defined in: https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
+    :param forecast: Forecast values. Shape: batch, time
+    :param target: Target values. Shape: batch, time
+    :param mask: 0/1 mask. Shape: batch, time
+    :return: Loss value
+    """
+    weights = divide_no_nan(mask, t.abs(target.data))
     delta_y = t.sub(target, forecast)
 
     pinball = t.max(t.mul(tau, delta_y), t.mul((tau - 1), delta_y))
