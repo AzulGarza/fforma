@@ -8,7 +8,7 @@ import multiprocessing as mp
 from math import sqrt
 from functools import partial
 from dask import delayed, compute
-from src.metrics.pytorch_metrics import divide_no_nan
+from .losses import divide_no_nan
 
 AVAILABLE_METRICS = ['mse', 'rmse', 'mape', 'smape', 'mase', 'rmsse',
                      'mini_owa', 'pinball_loss']
@@ -66,7 +66,7 @@ def rmse(y, y_hat):
 
     return rmse
 
-def mape(y, y_hat):
+def mape(y, y_hat, mask=None):
     """Calculates Mean Absolute Percentage Error.
 
     MAPE measures the relative prediction accuracy of a
@@ -85,12 +85,18 @@ def mape(y, y_hat):
     ------
     scalar: MAPE
     """
-    mape = np.mean(np.abs(y - y_hat) / np.abs(y))
+    if mask is not None:
+        #Avoid 0 division
+        weights = divide_no_nan(mask, y)
+        mape = np.abs((y - y_hat) * weights)
+        mape = np.sum(mape) / np.sum(mask)
+    else:
+        mape = np.mean(np.abs(y - y_hat) / np.abs(y))
     mape = 100 * mape
 
     return mape
 
-def smape(y, y_hat):
+def smape(y, y_hat, mask=None):
     """Calculates Symmetric Mean Absolute Percentage Error.
 
     SMAPE measures the relative prediction accuracy of a
@@ -115,8 +121,16 @@ def smape(y, y_hat):
     """
     delta_y = np.abs(y - y_hat)
     scale = np.abs(y) + np.abs(y_hat)
-    smape = divide_no_nan(delta_y, scale)
-    smape = 200 * np.mean(smape)
+
+    if mask is not None:
+        smape = divide_no_nan(delta_y * mask, scale)
+        smape = np.sum(smape) / np.sum(mask)
+    else:
+        smape = divide_no_nan(delta_y, scale)
+        smape = np.mean(smape)
+
+    smape = 200 * smape
+
     assert smape <= 200, 'SMAPE should be lower than 200'
 
     return smape
@@ -146,8 +160,9 @@ def mase(y, y_hat, y_train, seasonality=1):
     ------
     scalar: MASE
     """
+    delta_y = np.mean(abs(y - y_hat))
     scale = np.mean(abs(y_train[seasonality:] - y_train[:-seasonality]))
-    mase = np.mean(abs(y - y_hat)) / scale
+    mase = (delta_y / scale) if scale > 0 else 0
     mase = 100 * mase
 
     return mase
