@@ -22,44 +22,7 @@ import pandas as pd
 from src.metrics.metrics import smape, mape
 from src.base_models import FQRA, QRAL1
 from src.meta_model import MetaModels
-from src.utils import long_to_wide
-
-#############################################################################
-# COMMON
-#############################################################################
-
-def evaluate_batch(batch, metric):
-    losses = []
-    for uid, df in batch.groupby('unique_id'):
-        y = df['y'].values
-        y_hat = df['y_hat'].values
-
-        loss = metric(y, y_hat)
-        losses.append(loss)
-    return losses
-
-def evaluate_panel(y_panel, y_hat_panel, metric):
-    """
-    """
-    metric_name = metric.__code__.co_name
-    y_df = y_panel.merge(y_hat_panel, how='left', on=['unique_id', 'ds'])
-    y_df = y_df.set_index('unique_id')
-
-    parts = mp.cpu_count() - 1
-    y_df_dask = dd.from_pandas(y_df, npartitions=parts).to_delayed()
-
-    evaluate_batch_p = partial(evaluate_batch, metric=metric)
-
-    task = [delayed(evaluate_batch_p)(part) for part in y_df_dask]
-
-    with ProgressBar():
-        losses = compute(*task)
-
-    losses = list(chain(*losses))
-
-    mean_loss = np.mean(losses)
-
-    return mean_loss
+from src.utils import long_to_wide, evaluate_panel_per_obs
 
 #############################################################################
 # MEAN ENSEMBLE
@@ -93,19 +56,67 @@ class MetaLearnerMean(object):
         y_hat_df = preds_df_test[['unique_id', 'ds']]
         y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).mean(axis=1)
 
-        self.test_min_smape = evaluate_panel(y_panel=y_df_test,
-                                             y_hat_panel=y_hat_df,
-                                             metric=smape)
+        self.test_min_smape = evaluate_panel_per_obs(y_panel=y_df_test,
+                                                     y_hat_panel=y_hat_df,
+                                                     metric=smape)['smape'].values.item()
 
-        self.test_min_mape = evaluate_panel(y_panel=y_df_test,
-                                            y_hat_panel=y_hat_df,
-                                            metric=mape)
+        self.test_min_mape = evaluate_panel_per_obs(y_panel=y_df_test,
+                                                    y_hat_panel=y_hat_df,
+                                                    metric=mape)['mape'].values.item()
 
         return self
 
     def predict(self, preds_df_test):
         y_hat_df = preds_df_test[['unique_id', 'ds']]
         y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).mean(axis=1)
+
+        return y_hat_df
+
+#############################################################################
+# MEDIAN ENSEMBLE
+#############################################################################
+
+class MetaLearnerMedian(object):
+    """Evaluates ensemble model on the fly using neural networks.
+
+    Parameters
+    ----------
+    actual_y: numpy array
+        Actual values of the time series.
+        Numpy array of size N * h
+    preds_y_val: numpy array
+        Model predictions to ensemble.
+        Numpy array of size N * h * m.
+    h: int
+        Horizon of the validation set.
+    weights: numpy array
+        Weighted errors.
+    loss_function: pytorch loss function
+
+    random_seed:
+
+    """
+    def __init__(self, params):
+        pass
+
+    def fit(self, preds_df_test=None, y_df_test=None, verbose=True):
+
+        y_hat_df = preds_df_test[['unique_id', 'ds']]
+        y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).median(axis=1)
+
+        self.test_min_smape = evaluate_panel_per_obs(y_panel=y_df_test,
+                                                     y_hat_panel=y_hat_df,
+                                                     metric=smape)['smape'].values.item()
+
+        self.test_min_mape = evaluate_panel_per_obs(y_panel=y_df_test,
+                                                    y_hat_panel=y_hat_df,
+                                                    metric=mape)['mape'].values.item()
+
+        return self
+
+    def predict(self, preds_df_test):
+        y_hat_df = preds_df_test[['unique_id', 'ds']]
+        y_hat_df['y_hat'] = preds_df_test.drop(['unique_id','ds'], axis=1).median(axis=1)
 
         return y_hat_df
 
