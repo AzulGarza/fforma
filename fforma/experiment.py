@@ -271,17 +271,17 @@ GRID_QFFORMA8 = {'model_type': ['qfforma'],
                  'grid_id': ['grid_qfforma8']}
 
 GRID_QFFORMANBEATS = {'model_type': ['qfforma'],
-                     'n_epochs': [100], #[10, 15, 20, 25],
-                     'lr': [1e-2],
-                     'batch_size': [32, 64],
-                     'gradient_eps': [1e-8],
-                     'weight_decay': [0],
+                     'n_epochs': [200],#[10, 15, 20, 25],
+                     'lr': [1e-1, 1e-2, 1e-3],
+                     'batch_size': [32, 64], #, 512, 1024],
+                     #'gradient_eps': [1e-8],
+                     #'weight_decay': [0.01, 0.05, 0.1, 0.13, 0.5],
                      #'lr_scheduler_step_size': [10],
-                     'lr_decay': [0.5, 0.8, 1],
-                     'dropout': [0.0],
-                     'layers': ['[400, 200, 100, 50, 25]'],
+                     #'lr_decay': [0.5, 0.8, 1],
+                     'dropout': [0.1, 0.12, 0.15],
+                     'layers': ['[256, 256]', '[256, 128, 64]'],#['[256, 256]'],#,  '[256, 128, 64]', '[400, 200, 100, 50, 25]'],  #['[128, 64, 32, 16, 8, 4, 2]', '[400, 200, 100, 50, 25]'],
                      'use_softmax': [True],
-                     'train_percentile': [0.45, 0.46, 0.47, 0.48, 0.49, 0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58],
+                     'train_percentile': [0.48, 0.49, 0.5, 0.51, 0.52, 0.53],
                      'display_step': [1],
                      'random_seed': [1],
                      'grid_id': ['grid_qfforma_nbeats']}
@@ -322,13 +322,20 @@ GRID_QFFORMATEST = {'model_type': ['qfforma'],
                      'grid_id': ['grid_qfforma4']}
 
 
-QRID_NAIVE = {'model_type': ['mean_ensemble'],
+GRID_NAIVE = {'model_type': ['mean_ensemble'],
               'param' : ['soy un placeholder'],
               'grid_id': ['grid_naive']}
 
-ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': QRID_NAIVE,
-                                      'M3': QRID_NAIVE,
-                                      'TOURISM': QRID_NAIVE},
+GRID_NAIVE_MEDIAN = {'model_type': ['median_ensemble'],
+                     'param' : ['soy un placeholder'],
+                     'grid_id': ['grid_naive']}
+
+ALL_MODEL_SPECS  = {'mean_ensemble': {'M4': GRID_NAIVE,
+                                      'M3': GRID_NAIVE,
+                                      'TOURISM': GRID_NAIVE},
+                    'median_ensemble': {'M4': GRID_NAIVE_MEDIAN,
+                                        'M3': GRID_NAIVE_MEDIAN,
+                                        'TOURISM': GRID_NAIVE_MEDIAN},
                     'qra': {'M4': GRID_QRA1,
                             'M3': GRID_QRA3,
                             'TOURISM': GRID_QRA3},
@@ -385,7 +392,7 @@ def generate_grid(args):
     model_specs_df.to_csv(grid_file_name, encoding='utf-8', index=None)
     return model_specs_df, grid_dir
 
-def read_data(dataset='M4'):
+def read_data(dataset='M4', seasonality=''):
 
     # Load and parse data
     data_file = './data/experiment/{}_pickle.p'.format(dataset)
@@ -404,12 +411,22 @@ def read_data(dataset='M4'):
     fforma_errors = data.get('fforma_errors', None)
 
     # Filter unique_ids with X_train_df unique_ids
+    drop_feats = ['nperiods', 'seasonal_period'] #['series_length', 'spike', 'hw_beta', 'crossing_points', 'flat_spots']
+
+    if seasonality:
+        X_train_df = X_train_df[X_train_df['unique_id'].str.contains(seasonality[0])].drop(drop_feats, 1)
+    else:
+        X_train_df = X_train_df.drop(drop_feats, 1)
+        X_train_df['seasonal_period'] = pd.get_dummies(X_train_df['unique_id'].str[0])
+        X_test_df['seasonal_period'] = pd.get_dummies(X_test_df['unique_id'].str[0])
+
+
     unique_ids = X_train_df['unique_id'].unique()
     preds_train_df = preds_train_df[preds_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
     y_train_df = y_train_df[y_train_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
     y_insample_df = y_insample_df[y_insample_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
 
-    X_test_df = X_test_df[X_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
+    X_test_df = X_test_df[X_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True).drop(drop_feats, 1)
     preds_test_df = preds_test_df[preds_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
     y_test_df = y_test_df[y_test_df['unique_id'].isin(unique_ids)].reset_index(drop=True)
 
@@ -437,13 +454,14 @@ def read_data(dataset='M4'):
 
 def train(args):
     train_model = {'mean_ensemble': train_mean_ensemble,
+                   'median_ensemble': train_median_ensemble,
                    'qra': train_qra,
                    'fqra': train_fqra,
                    'fforma': train_fforma,
                    'qfforma': train_qfforma}
 
     # Read data
-    data = read_data(args.dataset)
+    data = read_data(args.dataset, args.seasonality)
 
     # Read/Generate hyperparameter grid
     model_specs_df, grid_dir = generate_grid(args)
@@ -463,7 +481,7 @@ def upload_to_s3(args, model_id, predictions, evaluation):
 def predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df):
     #output_file = '{}/model_{}.p'.format(grid_dir, mc.model_id)
 
-    if args.model in ['qra', 'fqra', 'mean_ensemble']:
+    if args.model in ['qra', 'fqra', 'mean_ensemble', 'median_ensemble']:
         y_hat_df = model.predict(preds_test_df)
 
     elif args.model in ['qfforma']:
@@ -610,7 +628,7 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
 
     import torch
     from src.fforma import FFORMA
-    from src.metrics.pytorch_metrics import WeightedPinballLoss, ScaledWeightedPinballLoss
+    from src.metrics.losses import pinball_loss_1, pinball_loss_2, mape_loss, smape_2_loss
     from src.meta_learner import MetaLearnerNN
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -630,14 +648,14 @@ def train_qfforma(data, grid_dir, model_specs_df, args):
         model_params = {'n_epochs': int(mc.n_epochs),
                         'lr': mc.lr,
                         'batch_size': int(mc.batch_size),
-                        'gradient_eps': mc.gradient_eps,
-                        'weight_decay': mc.weight_decay,
-                        'lr_scheduler_step_size': int(lr_scheduler_step_size),
-                        'lr_decay': mc.lr_decay,
+                        #'gradient_eps': mc.gradient_eps,
+                        #'weight_decay': mc.weight_decay,
+                        #'lr_scheduler_step_size': int(lr_scheduler_step_size),
+                        #'lr_decay': mc.lr_decay,
                         'dropout': mc.dropout,
                         'layers': ast.literal_eval(mc.layers),
                         'use_softmax': mc.use_softmax,
-                        'loss_function': ScaledWeightedPinballLoss(mc.train_percentile),
+                        'loss_function': lambda x, y, z: pinball_loss_2(x, y, z, mc.train_percentile),
                         'display_step': int(mc.display_step),
                         'random_seed': int(mc.random_seed),
                         'device': device}
@@ -684,6 +702,37 @@ def train_mean_ensemble(data, grid_dir, model_specs_df, args):
         assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
         predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
 
+def train_median_ensemble(data, grid_dir, model_specs_df, args):
+    # Parse data
+    X_train_df = data['X_train_df']
+    preds_train_df = data['preds_train_df']
+    y_train_df = data['y_train_df'][['unique_id', 'ds', 'y']]
+    y_insample_df = data['y_insample_df']
+
+    X_test_df = data['X_test_df']
+    preds_test_df = data['preds_test_df']
+    y_test_df = data['y_test_df']
+
+    from benchmarks import MetaLearnerMedian
+
+    for i in range(args.start_id, args.end_id):
+
+        mc = model_specs_df.loc[i, :]
+
+        print(47*'=' + '\n')
+        print('model_config: {}'.format(i))
+        print(mc)
+        print(47*'=' + '\n')
+
+        params = {}
+
+        model = MetaLearnerMedian(params)
+
+        model = model.fit(preds_test_df, y_test_df[['unique_id', 'ds', 'y']])
+
+        assert set(preds_test_df.columns) == set(preds_train_df.columns), 'columns must be the same'
+        predict_evaluate(args, mc, model, X_test_df, preds_test_df, y_test_df)
+
 #############################################################################
 # MAIN
 #############################################################################
@@ -693,7 +742,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument('--model', type=str, help='Model from qra, fqra, fforma, qfforma')
-    parser.add_argument('--dataset', type=str, help='Daily, etc')
+    parser.add_argument('--dataset', type=str, help='M3, M4 or TOURISM')
+    parser.add_argument('--seasonality', type=str, help='Yearly, Quarterly, etc,', default='')
     parser.add_argument('--start_id', type=int, help='Start id')
     parser.add_argument('--end_id', type=int, default=0, help='End id')
     parser.add_argument('--generate_grid', type=int, default=0, help='Generate grid')

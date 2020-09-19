@@ -249,3 +249,46 @@ def evaluate_models(y_test_df, models_panel, metric, y_train_df=None,
     df_losses = pd.concat(list_losses, 1).reset_index()
 
     return df_losses
+
+###############################################################################
+###### EVALUATION PER obs
+###############################################################################
+
+def evaluate_panel_per_obs(y_panel, y_hat_panel, metric, y_train_df=None,
+                           seasonality=None) -> pd.DataFrame:
+    """
+    """
+    metric_name = metric.__name__
+    y_df = y_panel.merge(y_hat_panel, how='left', on=['unique_id', 'ds'])
+
+    y = y_df['y'].values
+    y_hat = y_df['y_hat'].values
+
+    df_losses = pd.DataFrame(index=[0])
+    df_losses[metric_name] = None
+
+    if metric_name in ['mase']:
+        y_train = df['y_train'].values.item()
+        loss = metric(y, y_hat, y_train, seasonality)
+    else:
+        loss = metric(y, y_hat)
+
+    df_losses.loc[0, metric_name] = loss
+
+    return df_losses
+
+def evaluate_models_per_obs(y_test_df, models_panel, metric, y_train_df=None,
+                            seasonality=1) -> pd.DataFrame:
+    models = set(models_panel.columns) - {'unique_id', 'ds'}
+    metric_name = metric.__name__
+
+    list_losses = []
+    for model in models:
+        y_hat_df = set_y_hat(models_panel, model, False)
+        loss = evaluate_panel_per_obs(y_test_df, y_hat_df, metric, y_train_df, seasonality)
+        loss = loss.rename(columns={metric_name: model})
+        list_losses.append(loss)
+
+    df_losses = pd.concat(list_losses, 1).reset_index(drop=True)
+
+    return df_losses

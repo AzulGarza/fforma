@@ -23,7 +23,6 @@ from torch.optim.lr_scheduler import StepLR
 from tsfeatures.metrics import evaluate_panel
 from src.meta_evaluation import calc_errors_widing
 from src.metrics.metrics import mape, smape
-from src.metrics.pytorch_metrics import WeightedSMAPE2Loss, WeightedMAPELoss
 
 ##############################################################################
 # FFORMA
@@ -277,8 +276,8 @@ class MetaLearnerXGBoost(object):
 # QFFORMA
 ##############################################################################
 
-LOSS_DICT = {'smape': WeightedSMAPE2Loss(),
-             'mape': WeightedMAPELoss()}
+LOSS_DICT = {'smape': smape,
+             'mape': mape}
 
 class NeuralNetwork(nn.Module):
 
@@ -306,7 +305,11 @@ class NeuralNetwork(nn.Module):
 
     def forward(self, x, v):
         theta = self.layers(x)
+        # print(x.shape)
+        # print(theta.shape)
+        # print(v.shape)
         forecast = torch.einsum('ij,ikj->ik', theta, v)
+        #print(forecast.shape)
         return forecast
 
 class MetaLearnerNN(object):
@@ -349,7 +352,7 @@ class MetaLearnerNN(object):
         padded_df = padded_df.sort_values(['unique_id','ds']).reset_index(drop=True)
         return padded_df, horizons
 
-    def prepare_datasets_for_model(self, X_df, padded_df, horizons):
+    def prepare_datasets_for_model(self, X_df, padded_df, horizons, train):
         # Reshape to tensor
         n_series = len(horizons)
         max_horizon = max(horizons)
@@ -358,33 +361,42 @@ class MetaLearnerNN(object):
         y = padded_df['y'].values.reshape((n_series, max_horizon))
         padded_df = padded_df.drop(['unique_id','ds','y'], axis=1)
         preds = padded_df.values.reshape((n_series, max_horizon, n_models))
-        horizons = np.expand_dims(horizons,1)
+        horizons = np.expand_dims(horizons, 1)
 
-        # Send datasets to torch tensors
+        masks = np.zeros((n_series, max_horizon))
+        for idx, h in enumerate(horizons):
+            masks[idx, :h.item()] = 1
+
         y = torch.tensor(y, dtype=torch.float32)
         preds = torch.tensor(preds, dtype=torch.float32)
         horizons = torch.tensor(horizons, dtype=torch.float32)
+        masks = torch.tensor(masks, dtype=torch.float32)
 
         X_df = X_df.set_index(['unique_id'])
         X = X_df.values
 
-        self.scaler = StandardScaler().fit(X)
-        X = self.scaler.transform(X)
+        # if train:
+        #     self.scaler = StandardScaler().fit(X)
+        #     X = self.scaler.transform(X)
+        # else:
+        #     X = self.scaler.transform(X)
         X = torch.tensor(X, dtype=torch.float32)
 
-        return X, y, preds, horizons, max_horizon, n_models
+        return X, y, preds, horizons, masks, max_horizon, n_models
 
     def evaluate_performance(self, dataloader, metric):
         self.model.eval()
         with torch.no_grad():
             losses = []
             for batch in dataloader:
-                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, batch)
-                batch_weights = 1 / batch_h
-                batch_weights = batch_weights.flatten()
+                batch_x, batch_y, batch_preds, batch_h, batch_mask = map(self.to_device, batch)
+
                 batch_y_hat = self.model(batch_x, batch_preds)
-                loss = LOSS_DICT[metric](batch_y, batch_y_hat, batch_weights)
-                losses.append(loss.cpu().data.numpy())
+                loss = LOSS_DICT[metric](batch_y.data.numpy(),
+                                         batch_y_hat.data.numpy(),
+                                         batch_mask.data.numpy())
+
+                losses.append(loss)
         avg_loss = np.mean(losses)
         return avg_loss
 
@@ -404,9 +416,14 @@ class MetaLearnerNN(object):
 
         # Pad predictions and y dataframes
         preds_df = preds_df.merge(y_df, on=['unique_id','ds'], how='outer')
+
+        # for col in preds_df.columns.difference(['unique_id', 'ds', 'naive_forec']):
+        #     preds_df[col] /= preds_df['naive_forec']
+        # preds_df['naive_forec'] /= preds_df['naive_forec']
+
         padded_df, horizons = self.pad_long_df(preds_df)
 
-        X, y, preds, horizons, max_horizon, n_models = self.prepare_datasets_for_model(X_df, padded_df, horizons)
+        X, y, preds, horizons, masks, max_horizon, n_models = self.prepare_datasets_for_model(X_df, padded_df, horizons, train=True)
         self.horizons = horizons
         self.max_horizon = max_horizon
         self.n_models = n_models
@@ -416,7 +433,7 @@ class MetaLearnerNN(object):
             preds_df_test = preds_df_test.merge(y_df_test, on=['unique_id','ds'], how='outer')
             padded_df_test, horizons_test = self.pad_long_df(preds_df_test)
 
-            X_test, y_test, preds_test, horizons_test, *_ = self.prepare_datasets_for_model(X_df_test, padded_df_test, horizons_test)
+            X_test, y_test, preds_test, horizons_test, masks_test, *_ = self.prepare_datasets_for_model(X_df_test, padded_df_test, horizons_test, train=False)
 
         #SETTING model
         loss = self.params['loss_function']
@@ -429,21 +446,25 @@ class MetaLearnerNN(object):
         self.model = self.to_device(self.model)
 
         optimizer = torch.optim.Adam(self.model.parameters(),
-                                     betas=(0.9, 0.999),
-                                     lr=self.params['lr'],
-                                     eps=self.params['gradient_eps'],
-                                     weight_decay=self.params['weight_decay'])
+                                      #betas=(0.9, 0.999),
+                                      lr=self.params['lr'])
+                                      #eps=self.params['gradient_eps'],
+                                      #weight_decay=self.params['weight_decay'])
 
-        lr_scheduler = StepLR(optimizer=optimizer,
-                              step_size=self.params['lr_scheduler_step_size'],
-                              gamma=self.params['lr_decay'])
+        # lr_scheduler = StepLR(optimizer=optimizer,
+        #                       step_size=self.params['lr_scheduler_step_size'],
+        #                       gamma=self.params['lr_decay'])
 
-        train_data = torch.utils.data.TensorDataset(X, y, preds, horizons)
-        train_loader = torch.utils.data.DataLoader(train_data, batch_size=self.params['batch_size'])
+        lr_decay_step = self.params['n_epochs'] // 3
+        if lr_decay_step == 0:
+           lr_decay_step = 1
+
+        train_data = torch.utils.data.TensorDataset(X, y, preds, horizons, masks)
+        train_loader = torch.utils.data.DataLoader(train_data, self.params['batch_size'], shuffle=True)
 
         if X_df_test is not None:
-            test_data = torch.utils.data.TensorDataset(X_test, y_test, preds_test, horizons_test)
-            test_loader = torch.utils.data.DataLoader(test_data, batch_size=len(test_data))
+            test_data = torch.utils.data.TensorDataset(X_test, y_test, preds_test, horizons_test, masks_test)
+            test_loader = torch.utils.data.DataLoader(test_data, batch_size=len(test_data), shuffle=True)
 
         self.test_min_smape = 100.0
         self.test_min_mape = 100.0
@@ -452,21 +473,27 @@ class MetaLearnerNN(object):
             start = time.time()
             epoch_losses = []
             for i, data in enumerate(train_loader):
-                batch_x, batch_y, batch_preds, batch_h = map(self.to_device, data)
+                batch_x, batch_y, batch_preds, batch_h, batch_mask = map(self.to_device, data)
 
-                batch_weights = 1/batch_h
-                batch_weights = batch_weights.flatten()
 
                 optimizer.zero_grad()
                 batch_y_hat = self.model(batch_x, batch_preds)
-                train_loss = loss(batch_y, batch_y_hat, batch_weights)
+                train_loss = loss(batch_y, batch_y_hat, batch_mask)
+
+                if np.isnan(float(train_loss)):
+                    break
+
                 train_loss.backward()
+                t.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
 
                 epoch_losses.append(train_loss.cpu().data.numpy())
 
             # Decay learning rate
-            lr_scheduler.step()
+            #lr_scheduler.step()
+            # for param_group in optimizer.param_groups:
+            #    param_group['lr'] = self.params['lr'] * 0.5 ** (epoch // lr_decay_step)
+
             self.train_loss = np.mean(epoch_losses)
 
             if ((epoch + 1) % self.params['display_step']) == 0:
@@ -506,7 +533,7 @@ class MetaLearnerNN(object):
 
         X_df = X_df.set_index(['unique_id'])
         X = X_df.values
-        X = self.scaler.transform(X)
+        #X = self.scaler.transform(X)
         X = torch.tensor(X, dtype=torch.float32)
 
         X, preds = map(self.to_device, [X, preds])

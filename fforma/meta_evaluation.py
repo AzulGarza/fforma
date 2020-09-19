@@ -9,11 +9,12 @@ import pandas as pd
 
 from tqdm import tqdm
 from copy import deepcopy
-from src.utils import long_to_wide, wide_to_long
+from src.utils import long_to_wide, wide_to_long, FREQ_DICT
 from tsfeatures.metrics import evaluate_panel
 from src.metrics.metrics import smape, mape, mase
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
+
 
 META_URL = 'https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/'
 
@@ -108,27 +109,34 @@ def calc_errors_widing(preds_df, y_panel_df, y_insample_df, seasonality, benchma
 
     df_wide_fun = lambda model_name: df_wide.rename(columns={model_name: 'y_hat'})
 
-    errors_smape = y_panel_df[['unique_id']].drop_duplicates().reset_index(drop=True)
-    errors_mase = errors_smape.copy()
-
     model_names = set(preds_df.columns) - {'unique_id', 'ds'}
     model_names.add(benchmark_model)
 
+
+    errors_smape = []
+    errors_mase = []
     for model_name in model_names:
-        errors_smape[model_name] = None
-        errors_mase[model_name] = None
         df_wide_hat = df_wide_fun(model_name)
 
-        errors_smape[model_name] = evaluate_wide_panel(wide_panel=df_wide_hat,
-                                                       metric=smape)['smape']
-        errors_mase[model_name] = evaluate_wide_panel(wide_panel=df_wide_hat,
-                                                      metric=mase)['mase']
+        df_smape = evaluate_wide_panel(wide_panel=df_wide_hat,
+                                       metric=smape)
+        df_mase = evaluate_wide_panel(wide_panel=df_wide_hat,
+                                      metric=mase)
+
+        df_smape = df_smape.rename(columns={'smape': model_name})
+        df_mase = df_smape.rename(columns={'mase': model_name})
+
+        errors_smape.append(df_smape)
+        errors_mase.append(df_mase)
+
+    errors_smape = pd.concat(errors_smape, 1)
+    errors_mase = pd.concat(errors_mase, 1)
 
     mean_smape_benchmark = errors_smape[benchmark_model].mean()
     mean_mase_benchmark = errors_mase[benchmark_model].mean()
 
-    errors_smape = errors_smape.drop(columns=benchmark_model).set_index('unique_id')
-    errors_mase = errors_mase.drop(columns=benchmark_model).set_index('unique_id')
+    errors_smape = errors_smape.drop(columns=benchmark_model)
+    errors_mase = errors_mase.drop(columns=benchmark_model)
 
     errors = errors_smape / mean_smape_benchmark + errors_mase / mean_mase_benchmark
     errors = 0.5 * errors
@@ -174,14 +182,14 @@ def calc_errors_wide(y_panel_wide_df, y_hat_col='y_hat'):
 
     return df_losses
 
-def smape_mase_naive2_from_long(y_insample_df, y_test_df):
+def smape_mase_from_long(y_insample_df, y_test_df, col='y_hat_naive2'):
     y_insample_wide = long_to_wide(y_insample_df.drop('ds', 1)).rename(columns={'y': 'y_insample'})
     y_test_wide = long_to_wide(y_test_df.drop('ds', 1)).rename(columns={'y': 'y_test'})
 
     complete_wide = y_insample_wide.merge(y_test_wide, how='left', on=['unique_id'])
     complete_wide['seasonality'] = complete_wide['unique_id'].apply(lambda x: FREQ_DICT[x[0]])
 
-    errors = calc_errors_wide(complete_wide, 'y_hat_naive2')
+    errors = calc_errors_wide(complete_wide, col)
     complete_wide = complete_wide.merge(errors, how='left', on=['unique_id'])
 
     return complete_wide
@@ -224,11 +232,8 @@ def evaluate_wide_panel(wide_panel, metric, remove_na=True):
     with ProgressBar():
         losses = compute(*losses)
 
-    loss_panel = [uids, losses]
-    loss_panel = zip(*loss_panel)
-
-    loss_panel = pd.DataFrame(loss_panel,
-                              columns=['unique_id', metric_name])
+    loss_panel = pd.DataFrame.from_dict({'unique_id': uids, metric_name: losses})
+    loss_panel = loss_panel.set_index('unique_id')
 
     return loss_panel
 
