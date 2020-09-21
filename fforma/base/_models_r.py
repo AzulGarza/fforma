@@ -289,7 +289,7 @@ class ThetaF(ForecastObject):
     def __init__(self, freq, **kwargs):
         super().__init__(model='thetaf', freq=freq, **kwargs)
 
-class Naive(ForecastObject):
+class NaiveR(ForecastObject):
     """Wrapper of forecast::naive from R.
 
     Parameters
@@ -303,7 +303,7 @@ class Naive(ForecastObject):
     def __init__(self, freq, **kwargs):
         super().__init__(model='naive', freq=freq, **kwargs)
 
-class SeasonalNaive(ForecastObject):
+class SeasonalNaiveR(ForecastObject):
     """Wrapper of forecast::snaive from R.
 
     Parameters
