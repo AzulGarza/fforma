@@ -18,7 +18,7 @@ from copy import deepcopy
 from sklearn.utils.validation import check_is_fitted
 
 
-class MetaModels:
+class BaseModelsTrainer:
     """
     Train models to ensemble.
 
