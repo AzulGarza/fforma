@@ -3,48 +3,73 @@
 
 import pandas as pd
 from fforma.base import FQRA, QRAL1
+from fforma.base.trainer import BaseModelsTrainer
 
 
 class MetaLearnerFQRA(object):
+    """
+    Factor Quantile Regression Averaging.
 
-    def __init__(self, tau, n_components, scheduler='processes'):
-        """
-        """
+    Parameters
+    ----------
+    tau: float
+        Number in (0, 1). Quantile objective.
+    n_components: int
+        Number of components used to ensemble.
+    scheduler: str
+        Dask scheduler. Using 'processes' as default. See https://docs.dask.org/en/latest/setup/single-machine.html
+        for details.
+        Using "threads" can cause severe conflicts.
+    """
+
+    def __init__(self, tau: float, n_components: int, scheduler: str = 'processes'):
+
         self.tau = tau
         self.n_components = n_components
         self.scheduler = scheduler
         self.model = {'FQRA': FQRA(n_components=self.n_components, tau=self.tau)}
 
-    def fit(self, X_df, y_df, X_test_df, y_test_df):
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> MetaLearnerFQRA:
         """
+        Fits Factor Quantile Regression Averaging.
+
+        Parameters
+        ----------
+        X: pandas DataFrame.
+            DataFrame with columns unique_id, ds and models to ensemble.
         """
-        train_df = train_to_horizontal(X_df, y_df)
-        print('Widing finished.')
-        train_df['seasonality']= 12 #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXoXXXXXXXXXXXXX
-        test_df = train_to_horizontal(X_test_df, y_test_df)
-        print('Widing finished.')
+        trainer_ = BaseModelsTrainer(models=self.model, scheduler=self.scheduler)
+        trainer_.fit(X, y)
 
-        self.meta_model = MetaModels(models=self.model, scheduler=self.scheduler)
-        self.meta_model.fit(y_panel_df=train_df)
-
-        y_hat_ = self.meta_model.predict(test_df)
-        y_hat_ = y_hat_[['unique_id','ds','FQRA']]
-        y_hat_.columns = ['unique_id', 'ds', 'y_hat']
-
-        y_hat_ = wide_to_long(y_hat_, lst_cols=['y_hat', 'ds'])
-
-        self.y_hat_ = y_hat_
+        self.trainer_ = trainer_
 
         return self
 
-    def predict(self, X_df):
+    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """
         """
         check_is_fitted(self)
+        y_hat = self.trainer_.predict(X)
+        y_hat = y_hat[['unique_id','ds','FQRA']]
+        y_hat.columns = ['unique_id', 'ds', 'y_hat']
 
-        return self.y_hat_
+        return y_hat
 
 class MetaLearnerLQRA(object):
+    """
+    Lasso Quantile Regression Averaging.
+
+    Parameters
+    ----------
+    tau: float
+        Number in (0, 1). Quantile objective.
+    penalty: float
+        Size of penalty to perform LASSO regression.
+    scheduler: str
+        Dask scheduler. Using 'processes' as default. See https://docs.dask.org/en/latest/setup/single-machine.html
+        for details.
+        Using "threads" can cause severe conflicts.
+    """
 
     def __init__(self, tau, penalty, scheduler='processes'):
         self.tau = tau
@@ -52,39 +77,28 @@ class MetaLearnerLQRA(object):
         self.scheduler = scheduler
         self.model = {'LQRA': QRAL1(tau=self.tau, lambd=self.penalty)}
 
-    def fit(self, X_df, y_df, X_test_df, y_test_df):
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> MetaLearnerLQRA:
         """
+        Fits Factor Quantile Regression Averaging.
+
+        Parameters
+        ----------
+        X: pandas DataFrame.
+            DataFrame with columns unique_id, ds and models to ensemble.
         """
-        train_df = train_to_horizontal(X_df, y_df)
-        train_df['seasonality']= 12 #TODO: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXoXXXXXXXXXXXXX
-        test_df = train_to_horizontal(X_test_df, y_test_df)
+        trainer_ = BaseModelsTrainer(models=self.model, scheduler=self.scheduler)
+        trainer_.fit(X, y)
 
-        self.meta_model = MetaModels(models=self.model, scheduler=self.scheduler)
-        self.meta_model.fit(y_panel_df=train_df)
-        self.meta_model.scheduler = 'single-threaded'
-
-        y_hat_df = self.meta_model.predict(test_df)
-        y_hat_df = y_hat_df[['unique_id','ds','LQRA']]
-        y_hat_df.columns = ['unique_id', 'ds', 'y_hat']
-
-        self.y_hat_df = y_hat_df
-
-        y_hat_df = wide_to_long(y_hat_df, lst_cols=['y_hat','ds'])
-
-        self.y_hat_df = y_hat_df
-
-        self.test_min_smape = evaluate_panel(y_panel=y_test_df,
-                                             y_hat_panel=y_hat_df,
-                                             metric=smape)
-        self.test_min_mape = evaluate_panel(y_panel=y_test_df,
-                                            y_hat_panel=y_hat_df,
-                                            metric=mape)
+        self.trainer_ = trainer_
 
         return self
 
-    def predict(self, X_df):
+    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """
         """
-        y_hat = self.y_hat_df
+        check_is_fitted(self)
+        y_hat = self.trainer_.predict(X)
+        y_hat = y_hat[['unique_id','ds','LQRA']]
+        y_hat.columns = ['unique_id', 'ds', 'y_hat']
 
         return y_hat
