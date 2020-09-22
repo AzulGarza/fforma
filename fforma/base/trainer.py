@@ -14,6 +14,7 @@ from collections import ChainMap
 from functools import partial
 from itertools import chain
 from copy import deepcopy
+from fforma.utils.reshaping import long_to_wide, train_to_horizontal, wide_to_long
 
 from sklearn.utils.validation import check_is_fitted
 
@@ -32,9 +33,11 @@ class BaseModelsTrainer:
         Using "threads" can cause severe conflicts.
     """
 
-    def __init__(self, models, scheduler='processes'):
+    def __init__(self, models, scheduler='processes', partitions=None):
         self.models = models
         self.scheduler = scheduler
+        self.partitions = 3 * mp.cpu_count() if partitions is None else partitions
+
 
     def fit_batch(self, batch, models):
         df_models = pd.DataFrame(index=batch.index)
@@ -45,28 +48,35 @@ class BaseModelsTrainer:
         for uid, df in batch.groupby('unique_id'):
             y = df['y'].values.item()
             y = np.array(y)
-            seasonality = df['seasonality'].values.item()
 
             X = df['X'].values.item() if 'X' in df.columns else None
 
             for model_name, model in models.items():
                 model = deepcopy(model)
-                #fitted_model = model(seasonality).fit(X, y)
                 fitted_model = model.fit(X, y)
 
                 df_models.loc[uid, model_name] = fitted_model
 
         return df_models
 
-    def fit(self, y_panel_df):
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> 'BaseModelsTrainer':
         """For each time series fit each model in models.
 
-        y_panel_df: pandas df
-            Pandas DataFrame with columns ['unique_id', 'seasonality', 'y']
+        Parameters
+        ----------
+        X: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds'] and exogenous vars.
+        y: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds', 'y'].
+
         """
-        parts = 3 * mp.cpu_count()
+        if X is None:
+            y_panel_df = long_to_wide(y)
+        else:
+            y_panel_df = train_to_horizontal(X, y)
+
         y_panel_df_dask = dd.from_pandas(y_panel_df.set_index('unique_id').sample(frac=1),
-                                         npartitions=parts)
+                                         npartitions=self.partitions)
         y_panel_df_dask = y_panel_df_dask.to_delayed()
 
         fit_batch = partial(self.fit_batch, models=self.models)
@@ -100,19 +110,22 @@ class BaseModelsTrainer:
 
         return forecasts
 
-    def predict(self, y_hat_df):
+    def predict(self, X):
         """Predict each univariate model for each time series.
 
-        y_hat_df: pandas df
-            Pandas DataFrame with columns ['unique_id', 'horizon']
+        X: pandas df
+            Pandas DataFrame with columns ['unique_id', 'ds']
         """
         check_is_fitted(self, 'fitted_models_')
+
+        y_hat_df = long_to_wide(X)
+        y_hat_df['horizon'] = y_hat_df['ds'].apply(lambda x: x.shape[0])
+
 
         panel_df = y_hat_df.set_index('unique_id')
         panel_df = panel_df.filter(items=['horizon', 'X']).join(self.fitted_models_)
 
-        parts = 1 * mp.cpu_count()
-        panel_df_dask = dd.from_pandas(panel_df, npartitions=parts).to_delayed()
+        panel_df_dask = dd.from_pandas(panel_df, npartitions=self.partitions).to_delayed()
 
         predidct_batch = partial(self.predict_batch, models=self.models)
 
@@ -123,6 +136,9 @@ class BaseModelsTrainer:
 
         forecasts = pd.concat(forecasts).reset_index()
 
-        forecasts = y_hat_df.merge(forecasts, how='left', on=['unique_id'])
+        forecasts = y_hat_df.merge(forecasts, how='left', on=['unique_id']).drop('horizon', 1)
+        
+        forecasts = wide_to_long(forecasts, ['ds'] + list(self.models.keys()))
+        forecasts = forecasts
 
         return forecasts
