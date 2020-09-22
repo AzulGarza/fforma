@@ -3,5 +3,5 @@
 
 from ._FFNN import MetaLearnerFFNN
 from ._XGBoost import MetaLearnerXGBoost
-from ._benchmarks import (MetaLearnerMean, MetaLearnerMedian, MetaLearnerFQRA,
-                          MetaLearnerLQRA)
+from ._basics import MetaLearnerMean, MetaLearnerMedian
+from ._regression_averaging import MetaLearnerFQRA, MetaLearnerLQRA
