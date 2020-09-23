@@ -6,6 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Tuple, Dict
 
 from .common import maybe_download_decompress
 
@@ -29,14 +30,25 @@ NEEDED_DATA = (f'{MAIN_DIR}/monthly_in.csv',
                f'{MAIN_DIR}/yearly_in.csv',
                f'{MAIN_DIR}/yearly_oos.csv')
 
+
 @dataclass
 class Tourism:
     y: pd.DataFrame
-    groups: dict
+    groups: Dict
     train_data: bool
 
     @staticmethod
     def load(directory: str, training: bool = True) -> 'Tourism':
+        """
+        Downloads and loads Tourism data.
+
+        Parameters
+        ----------
+        directory: str
+            Directory where data will be downloaded.
+        training: bool
+            Wheter return training or testing data. Default True.
+        """
 
         Tourism.download(directory)
 
@@ -63,22 +75,31 @@ class Tourism:
 
             data.append(df)
 
-        data = pd.concat(data).reset_index(drop=True)
+        data = pd.concat(data).reset_index(drop=True)[['unique_id', 'ds', 'y']]
 
         return Tourism(y=data, groups=groups, train_data=training)
 
     @staticmethod
-    def download(directory):
+    def download(directory: str) -> None:
         """Download Tourism."""
         maybe_download_decompress(directory, SOURCE_URL, NEEDED_DATA)
 
-    def get_group(self, group):
+    def get_group(self, group: str) -> pd.DataFrame:
+        """
+        Filters group data.
+
+        Parameters
+        ----------
+        group: str
+            Name of group.
+        """
         assert group in self.groups, \
             f'Please provide a valid group: {", ".join(self.groups.values)}'
 
         return self.y[self.y['unique_id'].isin(self.groups[group])]
 
-    def split_validation(self):
+    def split_validation(self) -> Tuple['Tourism']:
+        """Splits training data in train/validation."""
 
         assert self.train_data, 'Use training data for split validation'
 
