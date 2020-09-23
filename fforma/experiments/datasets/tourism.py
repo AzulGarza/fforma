@@ -10,7 +10,7 @@ from typing import Tuple, Dict
 
 from .common import maybe_download_decompress
 
-seas_dict = {'Monthly': {'seasonality': 12,
+SEAS_DICT = {'Monthly': {'seasonality': 12,
                          'horizon': 24, 'freq': 'M',
                          'rows': 3},
              'Quarterly': {'seasonality': 4,
@@ -57,9 +57,9 @@ class Tourism:
         data = []
         groups = {}
 
-        for dataset_name in seas_dict.keys():
-            seasonality =  seas_dict[dataset_name]['seasonality']
-            rows = seas_dict[dataset_name]['rows']
+        for dataset_name in SEAS_DICT.keys():
+            seasonality =  SEAS_DICT[dataset_name]['seasonality']
+            rows = SEAS_DICT[dataset_name]['rows']
 
             if training:
                 file = path/f'{dataset_name.lower()}_in.csv'
@@ -106,7 +106,7 @@ class Tourism:
         train = []
         val = []
         for group in self.groups:
-            horizon = seas_dict[group]['horizon']
+            horizon = SEAS_DICT[group]['horizon']
             df_group = self.get_group(group)
             train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-horizon)).reset_index(drop=True)
             val_group = df_group.groupby('unique_id').tail(horizon)
