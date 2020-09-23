@@ -94,7 +94,7 @@ class Tourism:
             Name of group.
         """
         assert group in self.groups, \
-            f'Please provide a valid group: {", ".join(self.groups.values)}'
+            f'Please provide a valid group: {", ".join(self.groups.keys())}'
 
         return self.y[self.y['unique_id'].isin(self.groups[group])]
 
