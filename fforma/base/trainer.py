@@ -31,15 +31,18 @@ class BaseModelsTrainer:
         Dask scheduler. See https://docs.dask.org/en/latest/setup/single-machine.html
         for details.
         Using "threads" can cause severe conflicts.
+    partitions: int
+        Number of partitions to be used in parallel processing.
+        Default to None, 3 times number of cores.
     """
 
-    def __init__(self, models, scheduler='processes', partitions=None):
+    def __init__(self, models: dict, scheduler: str = 'processes', partitions: int = None):
         self.models = models
         self.scheduler = scheduler
         self.partitions = 3 * mp.cpu_count() if partitions is None else partitions
 
 
-    def fit_batch(self, batch, models):
+    def _fit_batch(self, batch, models):
         df_models = pd.DataFrame(index=batch.index)
 
         for col in models.keys():
@@ -79,7 +82,7 @@ class BaseModelsTrainer:
                                          npartitions=self.partitions)
         y_panel_df_dask = y_panel_df_dask.to_delayed()
 
-        fit_batch = partial(self.fit_batch, models=self.models)
+        fit_batch = partial(self._fit_batch, models=self.models)
 
         task = [delayed(fit_batch)(part) for part in y_panel_df_dask]
 
@@ -90,7 +93,7 @@ class BaseModelsTrainer:
 
         return self
 
-    def predict_batch(self, batch, models):
+    def _predict_batch(self, batch, models):
         forecasts = pd.DataFrame(index=batch.index)
         for col in models.keys():
             forecasts[col] = None
@@ -110,7 +113,7 @@ class BaseModelsTrainer:
 
         return forecasts
 
-    def predict(self, X):
+    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """Predict each univariate model for each time series.
 
         X: pandas df
@@ -127,7 +130,7 @@ class BaseModelsTrainer:
 
         panel_df_dask = dd.from_pandas(panel_df, npartitions=self.partitions).to_delayed()
 
-        predidct_batch = partial(self.predict_batch, models=self.models)
+        predidct_batch = partial(self._predict_batch, models=self.models)
 
         task = [delayed(predidct_batch)(part) for part in panel_df_dask]
 
@@ -137,7 +140,7 @@ class BaseModelsTrainer:
         forecasts = pd.concat(forecasts).reset_index()
 
         forecasts = y_hat_df.merge(forecasts, how='left', on=['unique_id']).drop('horizon', 1)
-        
+
         forecasts = wide_to_long(forecasts, ['ds'] + list(self.models.keys()))
         forecasts = forecasts
 
