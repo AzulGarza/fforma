@@ -25,9 +25,11 @@ dependencies:
   - pyyaml
   - pip
   - pytest-cov
+  - rpy2
   - r-base<4.0
   - r-forecast
+  - r-data.table
+  - r-tsfeatures
   - jupyterlab
   - pip:
     - tsfeatures==0.1.0
-    - rpy2==3.3.3
