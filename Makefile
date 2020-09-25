@@ -1,6 +1,7 @@
 IMAGE := ensambler
 ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PORT := 8888
+INSTANCE := mega
 
 DOCKER_PARAMETERS := \
 	--user $(shell id -u) \
@@ -14,13 +15,11 @@ jupyterlab:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
 			bash -c "jupyter lab --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
 
-jlserver: .require-instance .require-dir
-	ssh ${instance} "cd ${dir} && make jupyterlab -e PORT=${PORT}"
+jlserver: .require-dir tunnel
+	ssh ${INSTANCE} "cd ${dir} && make jupyterlab -e PORT=${PORT}"
 
-.require-instance:
-ifndef instance
-	$(error instance is required)
-endif
+tunnel:
+	ssh -NfL localhost:${PORT}:localhost:${PORT} ${INSTANCE}
 
 .require-dir:
 ifndef dir
