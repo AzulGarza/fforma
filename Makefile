@@ -2,6 +2,7 @@ IMAGE := ensambler
 ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PORT := 8888
 INSTANCE := mega
+JUPYTER_KIND := lab
 
 DOCKER_PARAMETERS := \
 	--user $(shell id -u) \
@@ -11,12 +12,12 @@ DOCKER_PARAMETERS := \
 init:
 	docker build . -t ${IMAGE}
 
-jupyterlab:
+jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
-			bash -c "jupyter lab --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
+			bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
 
-jlserver: .require-dir tunnel
-	ssh ${INSTANCE} "cd ${dir} && make jupyterlab -e PORT=${PORT}"
+jupyter_server: .require-dir tunnel
+	ssh ${INSTANCE} "cd ${dir} && make jupyter -e PORT=${PORT}"
 
 tunnel:
 	ssh -NfL localhost:${PORT}:localhost:${PORT} ${INSTANCE}
