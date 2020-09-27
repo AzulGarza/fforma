@@ -3,6 +3,7 @@ ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PORT := 8888
 INSTANCE := mega
 JUPYTER_KIND := lab
+EXPERIMENTS_DATA := experiments
 
 DOCKER_PARAMETERS := \
 	--user $(shell id -u) \
@@ -12,9 +13,13 @@ DOCKER_PARAMETERS := \
 init:
 	docker build . -t ${IMAGE}
 
+base:
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m fforma.experiments.base.tourism --directory ${EXPERIMENTS_DATA}
+
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
-			bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
+		bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
 
 jupyter_server: .require-dir tunnel
 	ssh ${INSTANCE} "cd ${dir} && make jupyter -e PORT=${PORT}"
