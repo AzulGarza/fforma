@@ -40,7 +40,7 @@ class Quarterly:
 @dataclass
 class Yearly:
     seasonality: int = 1
-    horizon: int = 2
+    horizon: int = 4
     freq: str = 'D'
     rows: int = 2
     name: str = 'Yearly'
@@ -48,6 +48,7 @@ class Yearly:
 @dataclass
 class TourismInfo:
     groups: List = (Monthly, Quarterly, Yearly)
+    name: str = 'Tourism'
 
 @dataclass
 class Tourism:
@@ -68,9 +69,10 @@ class Tourism:
             Wheter return training or testing data. Default True.
         """
 
-        Tourism.download(directory)
+        path = Path(directory) / 'tourism'
+        Tourism.download(path)
 
-        path = Path('data/tourism/raw/decompressed_data')
+        path = path / 'raw' / 'decompressed_data'
 
         data = []
         groups = {}
@@ -94,23 +96,26 @@ class Tourism:
         return Tourism(y=data, groups=groups, train_data=training)
 
     @staticmethod
-    def download(directory: str) -> None:
+    def download(directory: Path) -> None:
         """Download Tourism Dataset."""
-        maybe_download_decompress(Path(directory) / 'Tourism', SOURCE_URL, NEEDED_DATA)
+        maybe_download_decompress(directory, SOURCE_URL, NEEDED_DATA)
 
-    def get_group(self, group: str) -> pd.DataFrame:
-        """
-        Filters group data.
+    def get_group(self, group: str) -> 'Tourism':
+        """Filters group data.
 
         Parameters
         ----------
         group: str
-            Name of group.
+            Group name.
         """
         assert group in self.groups, \
             f'Please provide a valid group: {", ".join(self.groups.keys())}'
 
-        return self.y[self.y['unique_id'].isin(self.groups[group])]
+        ids = self.groups[group]
+
+        y = self.y.query('unique_id in @ids')
+
+        return Tourism(y=y, groups={group: ids}, train_data=self.train_data)
 
     def split_validation(self) -> Tuple['Tourism']:
         """Splits training data in train/validation."""
@@ -121,7 +126,7 @@ class Tourism:
         val = []
 
         for group in TourismInfo.groups:
-            df_group = self.get_group(group.name)
+            df_group = self.get_group(group.name).y
             train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-group.horizon)).reset_index(drop=True)
             val_group = df_group.groupby('unique_id').tail(group.horizon)
             train.append(train_group)
