@@ -137,7 +137,9 @@ Untitle*.ipynb
 *.csv
 *.ipynb
 .R*
+.p
 hyperpar_tunning_*
 data
 R
 *.Rproj
+.Rproj.user
