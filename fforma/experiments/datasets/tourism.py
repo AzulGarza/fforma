@@ -4,32 +4,50 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Dict, List, Tuple
 
 from .common import maybe_download_decompress
 
-SEAS_DICT = {'Monthly': {'seasonality': 12,
-                         'horizon': 24, 'freq': 'M',
-                         'rows': 3},
-             'Quarterly': {'seasonality': 4,
-                           'horizon': 8, 'freq': 'Q',
-                           'rows': 3},
-             'Yearly': {'seasonality': 1,
-                        'horizon': 4, 'freq': 'D',
-                        'rows': 2}}
-
 SOURCE_URL = 'https://robjhyndman.com/data/27-3-Athanasopoulos1.zip'
 
-MAIN_DIR = '/tourism/raw/decompressed_data'
-NEEDED_DATA = (f'{MAIN_DIR}/monthly_in.csv',
-               f'{MAIN_DIR}/monthly_oos.csv',
-               f'{MAIN_DIR}/quarterly_in.csv',
-               f'{MAIN_DIR}/quarterly_oos.csv',
-               f'{MAIN_DIR}/yearly_in.csv',
-               f'{MAIN_DIR}/yearly_oos.csv')
+RAW_DIR = 'raw/decompressed_data'
+NEEDED_DATA = (f'{RAW_DIR}/monthly_in.csv',
+               f'{RAW_DIR}/monthly_oos.csv',
+               f'{RAW_DIR}/quarterly_in.csv',
+               f'{RAW_DIR}/quarterly_oos.csv',
+               f'{RAW_DIR}/yearly_in.csv',
+               f'{RAW_DIR}/yearly_oos.csv')
 
+
+@dataclass
+class Monthly:
+    seasonality: int = 12
+    horizon: int = 24
+    freq: str = 'M'
+    rows: int = 3
+    name: str = 'Monthly'
+
+@dataclass
+class Quarterly:
+    seasonality: int = 4
+    horizon: int = 8
+    freq: str = 'Q'
+    rows: int = 3
+    name: str = 'Quarterly'
+
+@dataclass
+class Yearly:
+    seasonality: int = 1
+    horizon: int = 2
+    freq: str = 'D'
+    rows: int = 2
+    name: str = 'Yearly'
+
+@dataclass
+class TourismInfo:
+    groups: List = (Monthly, Quarterly, Yearly)
 
 @dataclass
 class Tourism:
@@ -57,20 +75,16 @@ class Tourism:
         data = []
         groups = {}
 
-        for dataset_name in SEAS_DICT.keys():
-            seasonality =  SEAS_DICT[dataset_name]['seasonality']
-            rows = SEAS_DICT[dataset_name]['rows']
-
+        for group in TourismInfo.groups:
             if training:
-                file = path/f'{dataset_name.lower()}_in.csv'
+                file = path / f'{group.name.lower()}_in.csv'
             else:
-                file = path/f'{dataset_name.lower()}_oos.csv'
+                file = path / f'{group.name.lower()}_oos.csv'
 
             df = pd.read_csv(file)
+            groups[group.name] = df.columns.values
 
-            groups[dataset_name] = df.columns.values
-
-            df = df[rows:].melt(var_name='unique_id', value_name='y').dropna()
+            df = df[group.rows:].melt(var_name='unique_id', value_name='y').dropna()
             df['ds'] = df.groupby('unique_id').cumcount()
 
             data.append(df)
@@ -81,8 +95,8 @@ class Tourism:
 
     @staticmethod
     def download(directory: str) -> None:
-        """Download Tourism."""
-        maybe_download_decompress(directory, SOURCE_URL, NEEDED_DATA)
+        """Download Tourism Dataset."""
+        maybe_download_decompress(Path(directory) / 'Tourism', SOURCE_URL, NEEDED_DATA)
 
     def get_group(self, group: str) -> pd.DataFrame:
         """
@@ -105,11 +119,11 @@ class Tourism:
 
         train = []
         val = []
-        for group in self.groups:
-            horizon = SEAS_DICT[group]['horizon']
-            df_group = self.get_group(group)
-            train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-horizon)).reset_index(drop=True)
-            val_group = df_group.groupby('unique_id').tail(horizon)
+
+        for group in TourismInfo.groups:
+            df_group = self.get_group(group.name)
+            train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-group.horizon)).reset_index(drop=True)
+            val_group = df_group.groupby('unique_id').tail(group.horizon)
             train.append(train_group)
             val.append(val_group)
 
