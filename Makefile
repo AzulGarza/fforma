@@ -13,9 +13,16 @@ DOCKER_PARAMETERS := \
 init:
 	docker build . -t ${IMAGE}
 
-base:
+base: base_cv base_training
+
+base_cv:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.base.tourism --directory ${EXPERIMENTS_DATA}
+
+base_training:
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m fforma.experiments.base.tourism \
+							--directory ${EXPERIMENTS_DATA} --training
 
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
