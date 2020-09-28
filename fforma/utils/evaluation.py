@@ -86,11 +86,11 @@ def evaluate_panel(y_panel: pd.DataFrame,
 
     return losses
 
-def evaluate_modelsl(y_panel: pd.DataFrame,
-                     models_panel: pd.DataFrame,
-                     metric: Callable,
-                     y_train_df: Optional[pd.DataFrame] = None,
-                     seasonality: Optional[int] = None) -> pd.DataFrame:
+def evaluate_models(y_panel: pd.DataFrame,
+                    models_panel: pd.DataFrame,
+                    metric: Callable,
+                    y_train_df: Optional[pd.DataFrame] = None,
+                    seasonality: Optional[int] = None) -> pd.DataFrame:
     """
     Evaluates panel of models according to metric.
 
