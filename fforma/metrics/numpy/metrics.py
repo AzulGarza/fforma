@@ -1,23 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import numpy as np
-import pandas as pd
-import multiprocessing as mp
-
 from math import sqrt
-from functools import partial
-#from dask import delayed, compute
-from src.utils.pytorch.losses import divide_no_nan
+
+import numpy as np
+
+from ..utils import divide_no_nan
+
 
 AVAILABLE_METRICS = ['mse', 'rmse', 'mape', 'smape', 'mase', 'rmsse',
                      'mini_owa', 'pinball_loss']
 
-######################################################################
-# METRICS
-######################################################################
 
-def mse(y, y_hat):
+def mse(y: np.ndarray, y_hat: np.ndarray) -> float:
     """Calculates Mean Squared Error.
 
     MSE measures the prediction accuracy of a
@@ -40,7 +35,7 @@ def mse(y, y_hat):
 
     return mse
 
-def rmse(y, y_hat):
+def rmse(y: np.ndarray, y_hat: np.ndarray) -> float:
     """Calculates Root Mean Squared Error.
 
     RMSE measures the prediction accuracy of a
@@ -66,7 +61,7 @@ def rmse(y, y_hat):
 
     return rmse
 
-def mape(y, y_hat):
+def mape(y: np.ndarray, y_hat: np.ndarray) -> float:
     """Calculates Mean Absolute Percentage Error.
 
     MAPE measures the relative prediction accuracy of a
@@ -85,12 +80,15 @@ def mape(y, y_hat):
     ------
     scalar: MAPE
     """
-    mape = np.mean(np.abs(y - y_hat) / np.abs(y))
+    delta_y = np.abs(y - y_hat)
+    scale = np.abs(y)
+    mape = divide_no_nan(delta_y, scale)
+    mape = np.mean(mape)
     mape = 100 * mape
 
     return mape
 
-def smape(y, y_hat):
+def smape(y: np.ndarray, y_hat: np.ndarray) -> float:
     """Calculates Symmetric Mean Absolute Percentage Error.
 
     SMAPE measures the relative prediction accuracy of a
@@ -117,11 +115,13 @@ def smape(y, y_hat):
     scale = np.abs(y) + np.abs(y_hat)
     smape = divide_no_nan(delta_y, scale)
     smape = 200 * np.mean(smape)
+
     assert smape <= 200, 'SMAPE should be lower than 200'
 
     return smape
 
-def mase(y, y_hat, y_train, seasonality=1):
+def mase(y: np.ndarray, y_hat: np.ndarray,
+         y_train: np.ndarray, seasonality: int = 1) -> float:
     """Calculates the M4 Mean Absolute Scaled Error.
 
     MASE measures the relative prediction accuracy of a
@@ -152,7 +152,8 @@ def mase(y, y_hat, y_train, seasonality=1):
 
     return mase
 
-def rmsse(y, y_hat, y_train, seasonality=1):
+def rmsse(y: np.ndarray, y_hat: np.ndarray,
+          y_train: np.ndarray, seasonality: int = 1) -> float:
     """Calculates the M5 Root Mean Squared Scaled Error.
 
     Parameters
@@ -176,7 +177,10 @@ def rmsse(y, y_hat, y_train, seasonality=1):
 
     return rmsse
 
-def mini_owa(y, y_hat, y_train, seasonality, y_bench):
+def mini_owa(y: np.ndarray, y_hat: np.ndarray,
+             y_train: np.ndarray,
+             seasonality: int,
+             y_bench: np.ndarray) -> float:
     """Calculates the Overall Weighted Average for a single series.
 
     MASE, sMAPE for Naive2 and current model
@@ -207,11 +211,11 @@ def mini_owa(y, y_hat, y_train, seasonality, y_bench):
     smape_y = smape(y, y_hat)
     smape_bench = smape(y, y_bench)
 
-    mini_owa = ((mase_y/mase_bench) + (smape_y/smape_bench))/2
+    mini_owa = (mase_y / mase_bench + smape_y / smape_bench) / 2
 
     return mini_owa
 
-def pinball_loss(y, y_hat, tau=0.5):
+def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> np.ndarray:
     """Calculates the Pinball Loss.
 
     The Pinball loss measures the deviation of a quantile forecast.
@@ -233,21 +237,7 @@ def pinball_loss(y, y_hat, tau=0.5):
     return: pinball_loss
     """
     delta_y = y - y_hat
-    pinball = np.maximum(tau * delta_y, (tau-1) * delta_y)
+    pinball = np.maximum(tau * delta_y, (tau - 1) * delta_y)
     pinball = pinball.mean()
 
     return pinball
-
-def panel_mape(y_hat):
-    y_hat = y_hat.copy()
-    y_hat['mape'] = np.abs(y_hat['y_hat']-y_hat['y'])/np.abs(y_hat['y'])
-    y_hat_grouped = y_hat.groupby('unique_id').mean().reset_index()
-    mape = np.mean(y_hat_grouped['mape'])
-    return mape
-
-def panel_smape(y_hat):
-    y_hat = y_hat.copy()
-    y_hat['smape'] = np.abs(y_hat['y_hat']-y_hat['y'])/(np.abs(y_hat['y'])+np.abs(y_hat['y_hat']))
-    y_hat_grouped = y_hat.groupby('unique_id').mean().reset_index()
-    smape = 2 * np.mean(y_hat_grouped['smape'])
-    return smape
