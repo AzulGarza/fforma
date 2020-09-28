@@ -83,7 +83,6 @@ def get_base_data(train: Union[Tourism],
 
         logger.info('Calculating features')
         features_group = tsfeatures_r(train_group, freq=seasonality, parallel=True)
-        features_group = features_group.reset_index(drop=True)
         features_group = features_group.fillna(0)
         features_group = features_group.sort_values('unique_id')
         ids_group = features_group['unique_id'].unique()
@@ -107,7 +106,7 @@ def get_base_data(train: Union[Tourism],
 
     features = pd.concat(features).reset_index(drop=True)
     forecasts = pd.concat(forecasts).reset_index(drop=True)
-    ground_truth = test.y.filter(items=['unique_id', 'ds', 'y'])
+    ground_truth = pd.concat(ground_truth).reset_index(drop=True)
 
     return BaseData(features=features, forecasts=forecasts, \
                     ground_truth=ground_truth, errors=pd.DataFrame(), \
