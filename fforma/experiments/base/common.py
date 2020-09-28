@@ -93,15 +93,15 @@ def get_base_data(train: Union[Tourism],
         ground_truth_group = test.get_group(group.name).y
 
         meta_models = {
-            # 'auto_arima_forec': ARIMA(seasonality, stepwise=False, approximation=False),
-            # 'ets_forec': ETS(seasonality),
-            # 'nnetar_forec': NNETAR(seasonality),
-            # 'tbats_forec': TBATS(seasonality),
-            # 'stlm_ar_forec': STLMFFORMA(seasonality),
-            # 'rw_drift_forec': RandomWalk(seasonality, drift=True),
-            # 'theta_forec': ThetaF(seasonality),
-            # 'naive_forec': NaiveR(seasonality),train
-            # 'snaive_forec': SeasonalNaiveR(seasonality),
+            'auto_arima_forec': ARIMA(seasonality, stepwise=False, approximation=False),
+            'ets_forec': ETS(seasonality),
+            'nnetar_forec': NNETAR(seasonality),
+            'tbats_forec': TBATS(seasonality),
+            'stlm_ar_forec': STLMFFORMA(seasonality),
+            'rw_drift_forec': RandomWalk(seasonality, drift=True),
+            'theta_forec': ThetaF(seasonality),
+            'naive_forec': NaiveR(seasonality),train
+            'snaive_forec': SeasonalNaiveR(seasonality),
             'y_hat_naive2': Naive2(seasonality)
         }
 
