@@ -103,8 +103,7 @@ def get_base_data(train: Union[Tourism],
         #TODO calculate errors
 
         groups[group.name] = ids_group
-
-        collect()
+        sleep(5)
 
     features = pd.concat(features).reset_index(drop=True)
     forecasts = pd.concat(forecasts).reset_index(drop=True)
@@ -112,4 +111,4 @@ def get_base_data(train: Union[Tourism],
 
     return BaseData(features=features, forecasts=forecasts, \
                     ground_truth=ground_truth, errors=pd.DataFrame(), \
-                    groups=group)
+                    groups=groups)
