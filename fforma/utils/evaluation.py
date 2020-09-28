@@ -115,7 +115,7 @@ def evaluate_models(y_panel: pd.DataFrame,
     list_losses = []
     for model in models:
         y_hat_df = _set_y_hat(models_panel, model, False)
-        loss = evaluate_panel(y_test_df, y_hat_df, metric, y_train_df, seasonality)
+        loss = evaluate_panel(y_panel, y_hat_df, metric, y_train_df, seasonality)
         loss = loss.rename(columns={metric_name: model})
         loss = loss.set_index('unique_id')
         list_losses.append(loss)
