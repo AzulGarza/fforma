@@ -6,4 +6,4 @@ from ._models import (Naive, SeasonalNaive, Naive2, RandomWalkDrift,
                       FQRA, QRAL1, Croston, TSB, ADIDA, iMAPA)
 
 from ._models_r import (ARIMA, ETS, TBATS, STLM, STLMFFORMA, RandomWalk,
-                        ThetaF, NaiveR, SeasonalNaiveR)
+                        ThetaF, NaiveR, SeasonalNaiveR, NNETAR)

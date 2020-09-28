@@ -33,13 +33,13 @@ class BaseModelsTrainer:
         Using "threads" can cause severe conflicts.
     partitions: int
         Number of partitions to be used in parallel processing.
-        Default to None, 3 times number of cores.
+        Default to None, number of cores minus 1.
     """
 
     def __init__(self, models: dict, scheduler: str = 'processes', partitions: int = None):
         self.models = models
         self.scheduler = scheduler
-        self.partitions = 3 * mp.cpu_count() if partitions is None else partitions
+        self.partitions = mp.cpu_count() - 1 if partitions is None else partitions
 
 
     def _fit_batch(self, batch, models):
