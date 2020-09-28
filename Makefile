@@ -3,7 +3,7 @@ ROOT := $(shell dirname $(realpath $(firstword ${MAKEFILE_LIST})))
 PORT := 8888
 INSTANCE := mega
 JUPYTER_KIND := lab
-EXPERIMENTS_DATA := experiments
+EXPERIMENTS_DIR := experiments
 
 DOCKER_PARAMETERS := \
 	--user $(shell id -u) \
@@ -11,18 +11,18 @@ DOCKER_PARAMETERS := \
 	-w /fforma
 
 init:
-	docker build . -t ${IMAGE}
+	docker build . -t ${IMAGE} && mkdir ${EXPERIMENTS_DIR}
 
 base: base_cv base_training
 
 base_cv:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
-		python -m fforma.experiments.base.tourism --directory ${EXPERIMENTS_DATA}
+		python -m fforma.experiments.base.tourism --directory ${EXPERIMENTS_DIR}
 
 base_training:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.base.tourism \
-							--directory ${EXPERIMENTS_DATA} --training
+							--directory ${EXPERIMENTS_DIR} --training
 
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
