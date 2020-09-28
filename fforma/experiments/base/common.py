@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from __future__ import annotations
 from dataclasses import dataclass
 from gc import collect
 import logging
+from time import sleep
 from typing import Dict, Union
 
 import pandas as pd
@@ -14,6 +14,8 @@ from fforma.base.trainer import BaseModelsTrainer
 from fforma.base import (Naive2, ARIMA, ETS, NNETAR, STLM, TBATS, STLMFFORMA,
                          RandomWalk, ThetaF, NaiveR, SeasonalNaiveR)
 from fforma.experiments.datasets.tourism import TourismInfo, Tourism
+from fforma.metrics.numpy import mape, smape
+from fforma.utils.evaluation import evaluate_models
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,7 +26,8 @@ class BaseData:
     features: pd.DataFrame
     forecasts: pd.DataFrame
     ground_truth: pd.DataFrame
-    errors: pd.DataFrame
+    mape_forecasts: pd.DataFrame
+    smape_forecasts: pd.DataFrame
     groups: Dict
 
     def get_group(self, group: str) -> 'BaseData':
@@ -43,10 +46,29 @@ class BaseData:
         features = self.features.query('unique_id in @ids')
         forecasts = self.forecasts.query('unique_id in @ids')
         ground_truth = self.ground_truth.query('unique_id in @ids')
+        mape_forecasts = self.mape_forecasts.query('unique_id in @ids')
+        smape_forecasts = self.smape_forecasts.query('unique_id in @ids')
 
         return BaseData(features=features, forecasts=forecasts, \
-                        ground_truth=ground_truth, errors=pd.DataFrame,
+                        ground_truth=ground_truth,
+                        mape_forecasts=mape_forecasts, \
+                        smape_forecasts=smape_forecasts, \
                         groups={group: ids})
+
+    def get_metric(self, metric: str) -> pd.DataFrame:
+        """Return metric data.
+
+        Parameters
+        ----------
+        metric: str
+            Metric name. Either 'mape' or 'smape'.
+        """
+        assert metric in ['mape', 'smape'], 'Please provide mape or smape'
+
+        if metric == 'mape':
+            return self.mape_forecasts
+        else:
+            return self.smape_forecasts
 
 
 def get_base_data(train: Union[Tourism],
@@ -59,6 +81,8 @@ def get_base_data(train: Union[Tourism],
     forecasts = []
     ground_truth = []
     groups = {}
+    mape_forecasts = []
+    smape_forecasts = []
 
     for group in info.groups:
         logger.info(group.name)
@@ -99,7 +123,21 @@ def get_base_data(train: Union[Tourism],
         ground_truth_group = ground_truth_group.sort_values(['unique_id', 'ds'])
         ground_truth.append(ground_truth_group)
 
-        #TODO calculate errors
+        logger.info('Calculating MAPE')
+        mape_forecasts_group = evaluate_models(ground_truth_group,
+                                               forecasts_group,
+                                               metric=mape)
+        mape_forecasts_group = mape_forecasts_group.query('unique_id in @ids_group')
+        mape_forecasts_group = mape_forecasts_group.sort_values('unique_id')
+        mape_forecasts.append(mape_forecasts_group)
+
+        logger.info('Calculating SMAPE')
+        smape_forecasts_group = evaluate_models(ground_truth_group,
+                                               forecasts_group,
+                                               metric=smape)
+        smape_forecasts_group = smape_forecasts_group.query('unique_id in @ids_group')
+        smape_forecasts_group = smape_forecasts_group.sort_values('unique_id')
+        smape_forecasts.append(smape_forecasts_group)
 
         groups[group.name] = ids_group
         sleep(5)
@@ -107,7 +145,11 @@ def get_base_data(train: Union[Tourism],
     features = pd.concat(features).reset_index(drop=True)
     forecasts = pd.concat(forecasts).reset_index(drop=True)
     ground_truth = pd.concat(ground_truth).reset_index(drop=True)
+    mape_forecasts = pd.concat(mape_forecasts).reset_index(drop=True)
+    smape_forecasts = pd.concat(smape_forecasts).reset_index(drop=True)
 
     return BaseData(features=features, forecasts=forecasts, \
-                    ground_truth=ground_truth, errors=pd.DataFrame(), \
+                    ground_truth=ground_truth, \
+                    mape_forecasts=mape_forecasts, \
+                    smape_forecasts=smape_forecasts, \
                     groups=groups)
