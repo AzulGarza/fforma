@@ -1,310 +1,125 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import os
-import requests
+from functools import partial
+from typing import Callable, Optional
 
-import numpy as np
+from dask import delayed, compute
+import dask.dataframe as dd
+from dask.diagnostics import ProgressBar
+import multiprocessing as mp
 import pandas as pd
 
-from tqdm import tqdm
-from copy import deepcopy
-from src.utils import long_to_wide, wide_to_long, FREQ_DICT
-from tsfeatures.metrics import evaluate_panel
-from src.metrics.metrics import smape, mape, mase
-from dask import delayed, compute
-from dask.diagnostics import ProgressBar
+from .reshaping import long_to_wide, wide_to_long
 
+def _evaluate_batch(batch, metric, metric_name, seasonality):
+    df_losses = pd.DataFrame(index=batch.index.unique())
+    df_losses[metric_name] = None
 
-META_URL = 'https://github.com/FedericoGarza/meta-data/releases/download/v.0.0.1/'
+    for uid, df in batch.groupby('unique_id'):
+        y = df['y'].values.item()
+        y_hat = df['y_hat'].values.item()
 
-###############################################################################
-########## UTILS FOR FFORMA FLOW
-###############################################################################
-
-def calc_errors(preds_df, y_panel_df, y_insample_df, seasonality, benchmark_model):
-    """Calculates OWA of each time series
-    usign benchmark_model as benchmark.
-
-    Parameters
-    ----------
-    y_panel_df: pandas df
-        Pandas DataFrame with columns ['unique_id', 'ds', 'y']
-    y_insample_df: pandas df
-        Pandas DataFrame with columns ['unique_id', 'ds', 'y']
-        Train set.
-    seasonality: int
-        Frequency of the time seires.
-    benchmark_model: str
-        Column name of the benchmark model.
-
-    Returns
-    -------
-    Pandas DataFrame
-        OWA errors for each time series and each model.
-    """
-
-    assert benchmark_model in y_panel_df.columns
-
-    y_hat_panel_fun = lambda model_name: preds_df[['unique_id','ds', model_name]].rename(columns={model_name: 'y_hat'})
-
-    errors_smape = y_panel_df[['unique_id']].drop_duplicates().reset_index(drop=True)
-    errors_mase = errors_smape.copy()
-
-    model_names = set(preds_df.columns) - {'unique_id', 'ds'}
-
-    for model_name in model_names:
-        errors_smape[model_name] = None
-        errors_mase[model_name] = None
-        y_hat_panel = y_hat_panel_fun(model_name)
-
-        errors_smape[model_name] = evaluate_panel(y_test=y_panel_df, y_hat=y_hat_panel,
-                                                  y_train=y_insample_df,
-                                                  metric=smape,
-                                                  seasonality=seasonality)['error']
-        errors_mase[model_name] = evaluate_panel(y_test=y_panel_df, y_hat=y_hat_panel,
-                                                 y_train=y_insample_df,
-                                                 metric=mase,
-                                                 seasonality=seasonality)['error']
-
-    mean_smape_benchmark = errors_smape[benchmark_model].mean()
-    mean_mase_benchmark = errors_mase[benchmark_model].mean()
-
-    errors_smape = errors_smape.drop(columns=benchmark_model).set_index('unique_id')
-    errors_mase = errors_mase.drop(columns=benchmark_model).set_index('unique_id')
-
-    errors = errors_mase / mean_mase_benchmark + errors_smape / mean_smape_benchmark
-    errors = 0.5 * errors
-
-    return errors
-
-def calc_errors_widing(preds_df, y_panel_df, y_insample_df, seasonality, benchmark_model):
-    """Calculates OWA of each time series
-    usign benchmark_model as benchmark.
-
-    Parameters
-    ----------
-    y_panel_df: pandas df
-        Pandas DataFrame with columns ['unique_id', 'ds', 'y']
-    y_insample_df: pandas df
-        Pandas DataFrame with columns ['unique_id', 'ds', 'y']
-        Train set.
-    seasonality: pandas df
-        Frequency of the time seires.
-    benchmark_model: str
-        Column name of the benchmark model.
-
-    Returns
-    -------
-    Pandas DataFrame
-        OWA errors for each time series and each model.
-    """
-    df_wide = [long_to_wide(df).set_index(['unique_id']) \
-               for df in (preds_df, y_panel_df.rename(columns={'y': 'y_test'}),
-                          y_insample_df.rename(columns={'y': 'y_train'}))]
-
-    df_wide = pd.concat(df_wide, axis=1).join(seasonality.set_index('unique_id'))
-
-    assert benchmark_model in df_wide.columns
-
-    df_wide_fun = lambda model_name: df_wide.rename(columns={model_name: 'y_hat'})
-
-    model_names = set(preds_df.columns) - {'unique_id', 'ds'}
-    model_names.add(benchmark_model)
-
-
-    errors_smape = []
-    errors_mase = []
-    for model_name in model_names:
-        df_wide_hat = df_wide_fun(model_name)
-
-        df_smape = evaluate_wide_panel(wide_panel=df_wide_hat,
-                                       metric=smape)
-        df_mase = evaluate_wide_panel(wide_panel=df_wide_hat,
-                                      metric=mase)
-
-        df_smape = df_smape.rename(columns={'smape': model_name})
-        df_mase = df_smape.rename(columns={'mase': model_name})
-
-        errors_smape.append(df_smape)
-        errors_mase.append(df_mase)
-
-    errors_smape = pd.concat(errors_smape, 1)
-    errors_mase = pd.concat(errors_mase, 1)
-
-    mean_smape_benchmark = errors_smape[benchmark_model].mean()
-    mean_mase_benchmark = errors_mase[benchmark_model].mean()
-
-    errors_smape = errors_smape.drop(columns=benchmark_model)
-    errors_mase = errors_mase.drop(columns=benchmark_model)
-
-    errors = errors_smape / mean_smape_benchmark + errors_mase / mean_mase_benchmark
-    errors = 0.5 * errors
-
-    return errors
-
-def calc_errors_wide(y_panel_wide_df, y_hat_col='y_hat'):
-    """
-    y_panel_wide_df: pandas DF
-        columns ['unique_id', 'seasonality', 'y_insample', 'y_test']
-
-    returns smape and mase
-    """
-
-    uids = []
-    metrics = []
-    losses = []
-
-    for uid, df in y_panel_wide_df.groupby('unique_id'):
-        seasonality = df['seasonality'].item()
-        y_insample = df['y_insample'].item()
-        y_test = df['y_test'].item()
-        y_hat = df[y_hat_col].item()
-
-        loss_smape = delayed(smape)(y_test, y_hat)
-        uids.append(uid)
-        metrics.append(f'smape_{y_hat_col}')
-        losses.append(loss_smape)
-
-        loss_mase = delayed(mase)(y_test, y_hat, y_insample, seasonality)
-        uids.append(uid)
-        metrics.append(f'mase_{y_hat_col}')
-        losses.append(loss_mase)
-
-    with ProgressBar():
-        losses = compute(*losses)
-
-    dict_losses = {'unique_id': uids, 'metric': metrics, 'loss': losses}
-    df_losses = pd.DataFrame.from_dict(dict_losses)
-    df_losses = df_losses.set_index(['unique_id', 'metric']).unstack()
-    df_losses.columns = df_losses.columns.droplevel(0).rename('')
-    df_losses = df_losses.reset_index()
+        if metric_name in ['mase']:
+            y_train = df['y_train'].values.item()
+            loss = metric(y, y_hat, y_train, seasonality)
+        else:
+            loss = metric(y, y_hat)
+        df_losses.loc[uid, metric_name] = loss
 
     return df_losses
 
-def smape_mase_from_long(y_insample_df, y_test_df, col='y_hat_naive2'):
-    y_insample_wide = long_to_wide(y_insample_df.drop('ds', 1)).rename(columns={'y': 'y_insample'})
-    y_test_wide = long_to_wide(y_test_df.drop('ds', 1)).rename(columns={'y': 'y_test'})
+def _set_y_hat(df, col, drop_y=True):
+    df = df.rename(columns={col: 'y_hat'})
 
-    complete_wide = y_insample_wide.merge(y_test_wide, how='left', on=['unique_id'])
-    complete_wide['seasonality'] = complete_wide['unique_id'].apply(lambda x: FREQ_DICT[x[0]])
+    if drop_y:
+        df = df.drop('y', 1)
 
-    errors = calc_errors_wide(complete_wide, col)
-    complete_wide = complete_wide.merge(errors, how='left', on=['unique_id'])
+    return df
 
-    return complete_wide
+def evaluate_panel(y_panel: pd.DataFrame,
+                   y_hat_panel: pd.DataFrame,
+                   metric: Callable,
+                   y_train_df: Optional[pd.DataFrame] = None,
+                   seasonality: Optional[int] = None) -> pd.DataFrame:
+    """
+    Evaluates time series panel according to metric.
 
-def evaluate_wide_panel(wide_panel, metric, remove_na=True):
-
+    Parameters
+    ----------
+    y_panel: pd.DataFrame
+        Pandas Data Frame with columns ['unique_id', 'ds', 'y'].
+    y_hat_panel: pd.DataFrame
+        Pandas Data Frame with columns ['unique_id', 'ds', 'y_hat']
+    metric: Callable
+        Function to calculate metric.
+    y_train_df: pd.DataFrame
+        Optional for particular metrics.
+        Pandas Data Frame with columns ['unique_id', 'ds', 'y']
+    seasonality: int
+        Optional for particular metrics.
+        Integer.
+    """
     metric_name = metric.__name__
+    y_df = y_panel.merge(y_hat_panel, how='left', on=['unique_id', 'ds'])
+    y_df = long_to_wide(y_df)
 
-    losses = []
-    uids = []
-    for uid, df in wide_panel.groupby('unique_id'):
-        y_test = df['y_test'].item()
-        y_test = np.array(y_test)
+    if y_train_df is not None:
+        wide_y_train_df = long_to_wide(y_train_df).rename(columns={'y': 'y_train'})
+        y_df = y_df.merge(wide_y_train_df, how='left', on=['unique_id'])
 
-        y_hat = df['y_hat'].item()
-        y_hat = np.array(y_hat)
+    y_df = y_df.set_index('unique_id')
+    parts = mp.cpu_count() - 1
+    y_df_dask = dd.from_pandas(y_df, npartitions=parts).to_delayed()
 
-        if remove_na:
-            y_test = y_test[~np.isnan(y_test)]
-            y_hat = y_hat[~np.isnan(y_hat)]
+    evaluate_batch_p = partial(_evaluate_batch, metric=metric,
+                               metric_name=metric_name,
+                               seasonality=seasonality)
 
-        if metric_name in ['mase', 'rmsse']:
-            y_train = df['y_train'].item()
-            y_train = np.array(y_train)
-
-            if remove_na:
-                y_train = y_train[~np.isnan(y_train)]
-
-            seasonality = df['seasonality'].item()
-
-            loss = delayed(metric)(y=y_test, y_hat=y_hat,
-                                   y_train=y_train,
-                                   seasonality=seasonality)
-        else:
-            loss = delayed(metric)(y_test, y_hat)
-
-        losses.append(loss)
-        uids.append(uid)
+    task = [delayed(evaluate_batch_p)(part) for part in y_df_dask]
 
     with ProgressBar():
-        losses = compute(*losses)
+        losses = compute(*task)
 
-    loss_panel = pd.DataFrame.from_dict({'unique_id': uids, metric_name: losses})
-    loss_panel = loss_panel.set_index('unique_id')
+    losses = pd.concat(losses).reset_index()
+    losses[metric_name] = losses[metric_name].astype(float)
 
-    return loss_panel
+    return losses
 
-def evaluate_fforma_experiment(long_preds, directory, kind='M4'):
-    filepath = f'{directory}/{kind}_errors_naive2.p'
-
-    if not os.path.exists(filepath):
-        filename = filepath.split('/')[-1]
-        URL = META_URL + filename
-        r = requests.get(URL, stream=True)
-        # Total size in bytes.
-        total_size = int(r.headers.get('content-length', 0))
-        block_size = 1024 #1 Kibibyte
-        t = tqdm(total=total_size, unit='iB', unit_scale=True)
-
-        with open(filepath, 'wb') as f:
-            for data in r.iter_content(block_size):
-                t.update(len(data))
-                f.write(data)
-
-        t.close()
-
-        if total_size != 0 and t.n != total_size:
-            print("ERROR, something went wrong")
-
-        size = os.path.getsize(filepath)
-        print('Successfully downloaded', filename, size, 'bytes.')
-
-    errors_naive2 = pd.read_pickle(filepath)
-
-    #predictions
-    predictions = long_preds.groupby('unique_id')['y_hat'].apply(list).to_frame().reset_index()
-
-    #Preparing to evaluation
-    complete_data = predictions.merge(errors_naive2, how='left', on=['unique_id'])
-    errors = calc_errors_wide(complete_data)
-    errors = complete_data.merge(errors, how='left', on=['unique_id'])
-
-    errors = errors.loc[:, errors.columns.str.contains('mase|smape')]
-    errors = errors.mean().to_dict()
-    errors = pd.DataFrame(errors, index=[0])
-
-    for metric in ['mase', 'smape']:
-        errors[f'{metric}_rel'] = errors[f'{metric}_y_hat'] / errors[f'{metric}_y_hat_naive2']
-
-    errors['owa'] = 0.5 * (errors['mase_rel'] + errors['smape_rel'])
-
-    model_owa, model_mase, model_smape = [errors[col].item() for col in ('owa', 'mase_y_hat', 'smape_y_hat')]
-
-    print("OWA: {:03.3f}".format(model_owa))
-    print("MASE: {:03.3f}".format(model_mase))
-    print("SMAPE: {:03.3f}".format(100 * model_smape))
-
-    return errors
-
-def get_prediction_panel(y_panel_df, h, freq):
-    """Constructs panel to use with
-    predict method.
+def evaluate_modelsl(y_panel: pd.DataFrame,
+                     models_panel: pd.DataFrame,
+                     metric: Callable,
+                     y_train_df: Optional[pd.DataFrame] = None,
+                     seasonality: Optional[int] = None) -> pd.DataFrame:
     """
-    df = y_complete_train_df[['unique_id', 'ds']].groupby('unique_id').max().reset_index()
+    Evaluates panel of models according to metric.
 
-    predict_panel = []
-    for idx, df in df.groupby('unique_id'):
-        date = df['ds'].values.item()
-        unique_id = df['unique_id'].values.item()
+    Parameters
+    ----------
+    y_panel: pd.DataFrame
+        Pandas Data Frame with columns ['unique_id', 'ds', 'y'].
+    models_panel: pd.DataFrame
+        Pandas Data Frame with columns ['unique_id', 'ds'] and models columns.
+    metric: Callable
+        Function to calculate metric.
+    y_train_df: pd.DataFrame
+        Optional for particular metrics.
+        Pandas Data Frame with columns ['unique_id', 'ds', 'y']
+    seasonality: int
+        Optional for particular metrics.
+        Integer.
+    """
+    models = set(models_panel.columns) - {'unique_id', 'ds'}
+    metric_name = metric.__name__
 
-        date_range = pd.date_range(date, periods=h, freq=freq)
-        df_ds = pd.DataFrame.from_dict({'ds': date_range})
-        df_ds['unique_id'] = unique_id
-        predict_panel.append(df_ds[['unique_id', 'ds']])
+    list_losses = []
+    for model in models:
+        y_hat_df = _set_y_hat(models_panel, model, False)
+        loss = evaluate_panel(y_test_df, y_hat_df, metric, y_train_df, seasonality)
+        loss = loss.rename(columns={metric_name: model})
+        loss = loss.set_index('unique_id')
+        list_losses.append(loss)
 
-    predict_panel = pd.concat(predict_panel)
+    df_losses = pd.concat(list_losses, 1).reset_index()
 
-    return predict_panel
+    return df_losses
