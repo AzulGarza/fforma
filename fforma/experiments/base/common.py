@@ -100,7 +100,7 @@ def get_base_data(train: Union[Tourism],
             'stlm_ar_forec': STLMFFORMA(seasonality),
             'rw_drift_forec': RandomWalk(seasonality, drift=True),
             'theta_forec': ThetaF(seasonality),
-            'naive_forec': NaiveR(seasonality),train
+            'naive_forec': NaiveR(seasonality),
             'snaive_forec': SeasonalNaiveR(seasonality),
             'y_hat_naive2': Naive2(seasonality)
         }
