@@ -142,7 +142,7 @@ def get_base_data(train: Union[Tourism],
         groups[group.name] = ids_group
         sleep(5)
 
-    features = pd.concat(features).reset_index(drop=True)
+    features = pd.concat(features).reset_index(drop=True).fillna(0)
     forecasts = pd.concat(forecasts).reset_index(drop=True)
     ground_truth = pd.concat(ground_truth).reset_index(drop=True)
     mape_forecasts = pd.concat(mape_forecasts).reset_index(drop=True)
