@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from gc import collect
 import logging
 from time import sleep
-from typing import Dict, Union
+from typing import Dict, Union, Iterable
 
 import pandas as pd
 from tsfeatures.tsfeatures_r import tsfeatures_r
@@ -30,6 +30,27 @@ class BaseData:
     smape_forecasts: pd.DataFrame
     groups: Dict
 
+    def get_ids(self, ids: Iterable) -> 'BaseData':
+        """Return filtered data based on ids.
+
+        Parameters
+        ----------
+        ids: Iterable.
+            Iterable of ids.
+        """
+        features = self.features.query('unique_id in @ids')
+        forecasts = self.forecasts.query('unique_id in @ids')
+        ground_truth = self.ground_truth.query('unique_id in @ids')
+        mape_forecasts = self.mape_forecasts.query('unique_id in @ids')
+        smape_forecasts = self.smape_forecasts.query('unique_id in @ids')
+
+        return BaseData(features=features, forecasts=forecasts, \
+                        ground_truth=ground_truth,
+                        mape_forecasts=mape_forecasts, \
+                        smape_forecasts=smape_forecasts, \
+                        groups={'group': ids})
+
+
     def get_group(self, group: str) -> 'BaseData':
         """Filters group data.
 
@@ -43,17 +64,7 @@ class BaseData:
 
         ids = self.groups[group]
 
-        features = self.features.query('unique_id in @ids')
-        forecasts = self.forecasts.query('unique_id in @ids')
-        ground_truth = self.ground_truth.query('unique_id in @ids')
-        mape_forecasts = self.mape_forecasts.query('unique_id in @ids')
-        smape_forecasts = self.smape_forecasts.query('unique_id in @ids')
-
-        return BaseData(features=features, forecasts=forecasts, \
-                        ground_truth=ground_truth,
-                        mape_forecasts=mape_forecasts, \
-                        smape_forecasts=smape_forecasts, \
-                        groups={group: ids})
+        return self.get_ids(ids)
 
     def get_metric(self, metric: str) -> pd.DataFrame:
         """Return metric data.
