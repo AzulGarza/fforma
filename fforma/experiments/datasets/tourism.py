@@ -22,12 +22,12 @@ NEEDED_DATA = (f'{RAW_DIR}/monthly_in.csv',
 
 
 @dataclass
-class Monthly:
-    seasonality: int = 12
-    horizon: int = 24
-    freq: str = 'M'
-    rows: int = 3
-    name: str = 'Monthly'
+class Yearly:
+    seasonality: int = 1
+    horizon: int = 4
+    freq: str = 'D'
+    rows: int = 2
+    name: str = 'Yearly'
 
 @dataclass
 class Quarterly:
@@ -38,16 +38,16 @@ class Quarterly:
     name: str = 'Quarterly'
 
 @dataclass
-class Yearly:
-    seasonality: int = 1
-    horizon: int = 4
-    freq: str = 'D'
-    rows: int = 2
-    name: str = 'Yearly'
+class Monthly:
+    seasonality: int = 12
+    horizon: int = 24
+    freq: str = 'M'
+    rows: int = 3
+    name: str = 'Monthly'
 
 @dataclass
 class TourismInfo:
-    groups: List = (Monthly, Quarterly, Yearly)
+    groups: List = (Yearly, Quarterly, Monthly)
     name: str = 'Tourism'
 
 @dataclass
@@ -87,7 +87,7 @@ class Tourism:
             groups[group.name] = df.columns.values
 
             df = df[group.rows:].melt(var_name='unique_id', value_name='y').dropna()
-            df['ds'] = df.groupby('unique_id').cumcount()
+            df['ds'] = df.groupby('unique_id').cumcount() + 1
 
             data.append(df)
 

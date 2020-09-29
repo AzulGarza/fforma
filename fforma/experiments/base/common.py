@@ -2,7 +2,6 @@
 # coding: utf-8
 
 from dataclasses import dataclass
-from gc import collect
 import logging
 from time import sleep
 from typing import Dict, Union, Iterable
@@ -113,11 +112,11 @@ def get_base_data(train: Union[Tourism],
             'theta_forec': ThetaF(seasonality),
             'naive_forec': NaiveR(seasonality),
             'snaive_forec': SeasonalNaiveR(seasonality),
-            'y_hat_naive2': Naive2(seasonality)
+            'naive2_forec': Naive2(seasonality)
         }
 
         logger.info('Calculating features')
-        features_group = tsfeatures_r(train_group, freq=seasonality, parallel=True)
+        features_group = tsfeatures_r(train_group, freq=seasonality)
         features_group = features_group.fillna(0)
         features_group = features_group.sort_values('unique_id')
         ids_group = features_group['unique_id'].unique()
@@ -144,8 +143,8 @@ def get_base_data(train: Union[Tourism],
 
         logger.info('Calculating SMAPE')
         smape_forecasts_group = evaluate_models(ground_truth_group,
-                                               forecasts_group,
-                                               metric=smape)
+                                                forecasts_group,
+                                                metric=smape)
         smape_forecasts_group = smape_forecasts_group.query('unique_id in @ids_group')
         smape_forecasts_group = smape_forecasts_group.sort_values('unique_id')
         smape_forecasts.append(smape_forecasts_group)
