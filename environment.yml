@@ -2,6 +2,7 @@ name: ensambler
 channels:
   - conda-forge
   - defaults
+  - pytorch
 dependencies:
   - python=3.7
   - nomkl
@@ -31,5 +32,7 @@ dependencies:
   - r-data.table
   - r-tsfeatures
   - jupyterlab
+  - optuna
+  - pytorch==1.4.0
   - pip:
     - tsfeatures==0.1.0
