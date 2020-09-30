@@ -2,12 +2,12 @@
 # coding: utf-8
 import itertools
 
-import numpy as np
-import pandas as pd
-import multiprocessing as mp
 from dask import delayed, compute
 import dask.dataframe as dd
-from dask.diagnostics import ProgressBar
+import multiprocessing as mp
+import numpy as np
+import pandas as pd
+
 
 def long_to_wide(long_df, cols_to_parse=None,
                  cols_wide=None,
@@ -34,9 +34,7 @@ def long_to_wide(long_df, cols_to_parse=None,
         df = df.to_frame()
         df_list.append(df)
 
-    with ProgressBar():
-        df_list = compute(*df_list)
-
+    df_list = compute(*df_list)
     wide_df = pd.concat(df_list, 1).reset_index()
 
     return wide_df

@@ -6,7 +6,6 @@ from typing import Callable, Optional
 
 from dask import delayed, compute
 import dask.dataframe as dd
-from dask.diagnostics import ProgressBar
 import multiprocessing as mp
 import pandas as pd
 
@@ -78,9 +77,7 @@ def evaluate_panel(y_panel: pd.DataFrame,
 
     task = [delayed(evaluate_batch_p)(part) for part in y_df_dask]
 
-    with ProgressBar():
-        losses = compute(*task)
-
+    losses = compute(*task)
     losses = pd.concat(losses).reset_index()
     losses[metric_name] = losses[metric_name].astype(float)
 

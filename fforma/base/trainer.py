@@ -1,22 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import numpy as np
-import pandas as pd
+from copy import deepcopy
+from functools import partial
 
-import dask
-
+from dask import delayed, compute
 import dask.dataframe as dd
 import multiprocessing as mp
-from dask.diagnostics import ProgressBar
-from dask import delayed, compute
-from collections import ChainMap
-from functools import partial
-from itertools import chain
-from copy import deepcopy
-from fforma.utils.reshaping import long_to_wide, train_to_horizontal, wide_to_long
-
+import numpy as np
+import pandas as pd
 from sklearn.utils.validation import check_is_fitted
+
+from fforma.utils.reshaping import long_to_wide, train_to_horizontal, wide_to_long
 
 
 class BaseModelsTrainer:
@@ -86,8 +81,7 @@ class BaseModelsTrainer:
 
         task = [delayed(fit_batch)(part) for part in y_panel_df_dask]
 
-        with ProgressBar():
-            fitted_models = compute(*task, scheduler=self.scheduler)
+        fitted_models = compute(*task, scheduler=self.scheduler)
 
         self.fitted_models_ = pd.concat(fitted_models)
 
@@ -134,14 +128,9 @@ class BaseModelsTrainer:
 
         task = [delayed(predidct_batch)(part) for part in panel_df_dask]
 
-        with ProgressBar():
-            forecasts = compute(*task, scheduler=self.scheduler)
-
+        forecasts = compute(*task, scheduler=self.scheduler)
         forecasts = pd.concat(forecasts).reset_index()
-
         forecasts = y_hat_df.merge(forecasts, how='left', on=['unique_id']).drop('horizon', 1)
-
         forecasts = wide_to_long(forecasts, ['ds'] + list(self.models.keys()))
-        forecasts = forecasts
 
         return forecasts
