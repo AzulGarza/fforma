@@ -47,7 +47,7 @@ class Monthly:
 
 @dataclass
 class TourismInfo:
-    groups: List = (Yearly, Quarterly, Monthly)
+    groups: Tuple = (Yearly, Quarterly, Monthly)
     name: str = 'Tourism'
 
 @dataclass
@@ -129,6 +129,8 @@ class Tourism:
             df_group = self.get_group(group.name).y
             train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-group.horizon)).reset_index(drop=True)
             val_group = df_group.groupby('unique_id').tail(group.horizon)
+            val_group['ds'] = val_group.groupby('unique_id').cumcount() + 1
+            
             train.append(train_group)
             val.append(val_group)
 
