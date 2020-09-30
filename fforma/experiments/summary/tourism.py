@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from fforma.experiments.datasets.tourism import Tourism, TourismInfo
-from fforma.utils.evaluation import evaluate_panel
+from fforma.utils.evaluation import evaluate_models
 
 
 class TourismEvaluation:
@@ -26,7 +26,7 @@ class TourismEvaluation:
             ids = test_group.groups[name]
             forecasts_group = forecast.query('unique_id in @ids')
 
-            loss_group = evaluate_panel(test_group.y, forecasts_group, metric)
+            loss_group = evaluate_models(test_group.y, forecasts_group, metric)
             obs_group = loss_group.shape[0] * group.horizon
 
             loss_group = loss_group.mean().rename(name).to_frame()

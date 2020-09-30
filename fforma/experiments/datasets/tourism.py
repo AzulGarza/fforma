@@ -86,7 +86,19 @@ class Tourism:
             df = pd.read_csv(file)
             groups[group.name] = df.columns.values
 
-            df = df[group.rows:].melt(var_name='unique_id', value_name='y').dropna()
+            dfs = []
+            for col in df.columns:
+                df_col = df[col]
+                lenght = df_col[0].astype(int)
+                skip_rows = group.rows
+
+                df_col = df_col[skip_rows:lenght + skip_rows]
+                df_col = df_col.rename('y').to_frame()
+                df_col['unique_id'] = col
+
+                dfs.append(df_col)
+
+            df = pd.concat(dfs)
             df['ds'] = df.groupby('unique_id').cumcount() + 1
 
             data.append(df)
@@ -130,7 +142,7 @@ class Tourism:
             train_group = df_group.groupby('unique_id').apply(lambda df: df.head(-group.horizon)).reset_index(drop=True)
             val_group = df_group.groupby('unique_id').tail(group.horizon)
             val_group['ds'] = val_group.groupby('unique_id').cumcount() + 1
-            
+
             train.append(train_group)
             val.append(val_group)
 

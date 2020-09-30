@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from typing import Union
+from typing import Callable, Union
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from .tourism import TourismEvaluation
 from fforma.utils.evaluation import evaluate_models
 from fforma.experiments.datasets.tourism import TourismInfo
 from fforma.experiments.base.common import BaseData
@@ -38,7 +39,7 @@ def _evaluate_base(base_data: BaseData,
 
     return losses
 
-def evaluate_dataset(directory: str, dataset: str, metric: str = 'mape') -> pd.DataFrame:
+def evaluate_dataset(directory: str, dataset: str, metric: Callable) -> pd.DataFrame:
     """Evaluates dataset.
 
     Parameters
@@ -50,9 +51,26 @@ def evaluate_dataset(directory: str, dataset: str, metric: str = 'mape') -> pd.D
     """
     assert dataset in ['Tourism'], 'Please provide either Tourism, M3 or M4'
 
-    path = Path(directory) / dataset.lower() / 'base' / 'base_training.p'
+    metric_name = metric.__name__
+    path = Path(directory) / dataset.lower()
 
-    base_data = pd.read_pickle(path)
+    base_data = pd.read_pickle(path / 'base' / 'base_training.p')
+    benchmarks = pd.read_pickle(path / 'benchmarks' / 'benchmarks.p')
 
     if dataset == 'Tourism':
-        return _evaluate_base(base_data, TourismInfo, metric)
+        base_evaluation =  _evaluate_base(base_data, TourismInfo, metric_name)
+        base_evaluation = base_evaluation.loc[base_evaluation.index.str.contains('_mape')]
+        benchmarks_evaluation = TourismEvaluation(directory).evaluate(benchmarks, metric)
+
+        forecasts = []
+        for group in TourismInfo.groups:
+            forecast_group = pd.read_pickle(path / 'forecasts' / f'{group.name}_forecast.p')
+            forecasts.append(forecast_group)
+        forecasts = pd.concat(forecasts)
+
+        forecasts_evaluation = TourismEvaluation(directory).evaluate(forecasts, metric)
+        forecasts_evaluation.rename({'y_hat': 'fforma_ffnn_forec'}, inplace=True)
+
+        evaluation = pd.concat([base_evaluation, benchmarks_evaluation, forecasts_evaluation])
+
+        return evaluation

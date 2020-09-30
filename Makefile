@@ -24,6 +24,11 @@ base_training:
 		python -m fforma.experiments.base.tourism \
 							--directory ${EXPERIMENTS_DIR} --training
 
+benchmarks:
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m fforma.experiments.benchmarks.main \
+							--directory ${EXPERIMENTS_DIR} --dataset tourism
+
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
 		bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"

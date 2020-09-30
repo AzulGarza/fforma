@@ -20,12 +20,17 @@ def main(directory: str, dataset: str) -> None:
 
     logger.info('Computing mean benchmark')
     benchmark_mean = MetaLearnerMean().fit(base_data.forecasts).predict()
-    benchmark_mean.to_pickle(benchmark_path / 'mean.p')
+    benchmark_mean.rename({'y_hat': 'median_ensemble_forec'}, axis=1, inplace=True)
 
     logger.info('Computing median benchmark')
     benchmark_median = MetaLearnerMedian().fit(base_data.forecasts).predict()
-    benchmark_median.to_pickle(benchmark_path / 'median.p')
+    benchmark_median.rename({'y_hat': 'mean_ensemble_forec'}, axis=1, inplace=True)
 
+    benchmarks = benchmark_mean.merge(benchmark_median,
+                                      how='left',
+                                      on=['unique_id', 'ds'])
+
+    benchmarks.to_pickle(benchmark_path / 'benchmarks.p')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Get benchmark forecasts')
