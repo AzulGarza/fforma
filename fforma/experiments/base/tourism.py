@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .common import URL_NBEATS
+from fforma.experiments.datasets.common import maybe_download_decompress
 from fforma.experiments.datasets.tourism import TourismInfo, Tourism
 from .common import get_base_data
 
@@ -27,8 +29,17 @@ def main(directory: str, training: bool):
     dir_meta_data = Path(directory) / 'tourism' / 'base'
     dir_meta_data.mkdir(parents=True, exist_ok=True)
 
+    logger.info('Downloading nbeats data')
+    dir_meta_data_nbeats = dir_meta_data / 'nbeats'
+    dir_meta_data_nbeats.mkdir(parents=True, exist_ok=True)
+    file_nbeats = f'tourism_forecasts_{label}.p'
+    url_nbeats = URL_NBEATS + file_nbeats
+    needed_data = ('raw/' + file_nbeats,)
+    maybe_download_decompress(dir_meta_data_nbeats, url_nbeats, needed_data)
+    forecasts_nbeats = pd.read_pickle(dir_meta_data_nbeats / 'raw' / file_nbeats)
+
     logger.info(f'Calculating base data for {label}')
-    base_data = get_base_data(train, test, TourismInfo)
+    base_data = get_base_data(train, test, TourismInfo, forecasts_nbeats)
     pd.to_pickle(base_data, dir_meta_data / f'base_{label}.p')
 
 

@@ -4,7 +4,7 @@
 from dataclasses import dataclass
 import logging
 from time import sleep
-from typing import Dict, Union, Iterable
+from typing import Dict, Union, Iterable, Optional
 
 import pandas as pd
 from tsfeatures.tsfeatures_r import tsfeatures_r
@@ -15,6 +15,8 @@ from fforma.base import (Naive2, ARIMA, ETS, NNETAR, STLM, TBATS, STLMFFORMA,
 from fforma.experiments.datasets.tourism import TourismInfo, Tourism
 from fforma.metrics.numpy import mape, smape
 from fforma.utils.evaluation import evaluate_models
+
+URL_NBEATS = 'https://github.com/FedericoGarza/meta-data/releases/download/vnbeats/'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,8 +85,18 @@ class BaseData:
 
 def get_base_data(train: Union[Tourism],
                   test: Union[Tourism],
-                  info: Union[TourismInfo]) -> 'BaseData':
+                  info: Union[TourismInfo],
+                  add_forecasts: Optional[pd.DataFrame] = None) -> 'BaseData':
+    """
+    Parameters
+    ----------
 
+    train:
+    test:
+    info:
+    add_forecasts: pd.DataFrame
+        Additional forecasts to include.
+    """
     logger.info(info.name)
 
     features = []
@@ -127,6 +139,10 @@ def get_base_data(train: Union[Tourism],
         forecasts_group = models.predict(ground_truth_group.drop('y', 1))
         forecasts_group = forecasts_group.query('unique_id in @ids_group')
         forecasts_group = forecasts_group.sort_values(['unique_id', 'ds'])
+        if add_forecasts is not None:
+            forecasts_group = forecasts_group.merge(add_forecasts,
+                                                    how='left',
+                                                    on=['unique_id', 'ds'])
         forecasts.append(forecasts_group)
 
         ground_truth_group = ground_truth_group.query('unique_id in @ids_group')
