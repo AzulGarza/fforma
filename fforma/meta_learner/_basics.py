@@ -2,14 +2,15 @@
 # coding: utf-8
 
 import pandas as pd
+from sklearn.utils.validation import check_is_fitted
 
 
 class MetaLearnerMean(object):
     """Mean ensemble."""
-    def __init__(self, params):
+    def __init__(self):
         pass
 
-    def fit(self, X: pd.DataFrame, y=None) -> MetaLearnerMean:
+    def fit(self, X: pd.DataFrame, y=None) -> 'MetaLearnerMean':
         """
         Fits Mean Ensemble.
 
@@ -32,10 +33,10 @@ class MetaLearnerMean(object):
 
 class MetaLearnerMedian(object):
     """Median ensemble."""
-    def __init__(self, params):
+    def __init__(self):
         pass
 
-    def fit(self, X: pd.DataFrame, y=None) -> MetaLearnerMedian:
+    def fit(self, X: pd.DataFrame, y=None) -> 'MetaLearnerMedian':
         """
         Fits Median Ensemble.
 
