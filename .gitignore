@@ -137,7 +137,8 @@ Untitle*.ipynb
 *.csv
 *.ipynb
 .R*
-.p
+*.p
+*.pickle
 hyperpar_tunning_*
 data
 R
