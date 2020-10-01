@@ -11,6 +11,9 @@ from scipy.special import softmax
 from sklearn.utils.validation import check_is_fitted
 import xgboost as xgb
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class MetaLearnerXGBoost:
     """Feature-based Forecast Model Averaging (FFORMA).
@@ -86,8 +89,8 @@ class MetaLearnerXGBoost:
         loser_models = best_models_count[best_models_count.isna()].index.to_list()
 
         if len(loser_models) > 0:
-            print('Models {} never win.'.format(' '.join(loser_models)))
-            print('Removing it...\n')
+            logger.info(f'Models {' '.join(loser_models)} never win.')
+            logger.info('Removing it...\n')
             errors = errors.copy().drop(columns=loser_models)
 
         self.contribution_to_error = errors.values
