@@ -29,6 +29,12 @@ benchmarks:
 		python -m fforma.experiments.benchmarks.main \
 							--directory ${EXPERIMENTS_DIR} --dataset tourism
 
+run: .require-model .require-splits .require-trials
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m fforma.experiments.cross_validation.tourism.main \
+							--directory ${EXPERIMENTS_DIR} --n_splits ${splits} \
+							--n_trials ${trials} --model ${model}
+
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
 		bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
@@ -42,4 +48,19 @@ tunnel:
 .require-dir:
 ifndef dir
 	$(error dir is required)
+endif
+
+.require-model:
+ifndef model
+	$(error model is required)
+endif
+
+.require-splits:
+ifndef splits
+	$(error splits is required)
+endif
+
+.require-trials:
+ifndef model
+	$(error trials is required)
 endif
