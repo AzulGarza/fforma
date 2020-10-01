@@ -2,6 +2,7 @@
 # coding: utf-8
 
 from copy import deepcopy
+import logging
 from typing import Dict, Tuple
 
 import numpy as np
@@ -89,7 +90,8 @@ class MetaLearnerXGBoost:
         loser_models = best_models_count[best_models_count.isna()].index.to_list()
 
         if len(loser_models) > 0:
-            logger.info(f'Models {' '.join(loser_models)} never win.')
+            loser = ', '.join(loser_models)
+            logger.info(f'Models {loser} never win.')
             logger.info('Removing it...\n')
             errors = errors.copy().drop(columns=loser_models)
 
