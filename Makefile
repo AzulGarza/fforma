@@ -34,11 +34,13 @@ benchmarks: .require-dataset
 							--directory ${EXPERIMENTS_DIR} \
 							--dataset ${dataset}
 
-run: .require-model .require-splits .require-trials
+run: .require-dataset .require-model .require-splits .require-trials
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
-		python -m fforma.experiments.cross_validation.tourism.main \
-							--directory ${EXPERIMENTS_DIR} --n_splits ${splits} \
-							--n_trials ${trials} --model ${model}
+		python -m fforma.experiments.cross_validation.${dataset}.main \
+							--directory ${EXPERIMENTS_DIR} \
+							--n_splits ${splits} \
+							--n_trials ${trials}
+							--model ${model}
 
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
