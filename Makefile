@@ -39,7 +39,7 @@ run: .require-dataset .require-model .require-splits .require-trials
 		python -m fforma.experiments.cross_validation.${dataset}.main \
 							--directory ${EXPERIMENTS_DIR} \
 							--n_splits ${splits} \
-							--n_trials ${trials}
+							--n_trials ${trials} \
 							--model ${model}
 
 jupyter:
