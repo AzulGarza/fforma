@@ -34,5 +34,6 @@ dependencies:
   - jupyterlab
   - optuna
   - pytorch==1.4.0
+  - xlrd
   - pip:
     - tsfeatures==0.1.0
