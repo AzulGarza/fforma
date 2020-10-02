@@ -23,7 +23,7 @@ base_cv: .require-dataset
 
 base_training: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
-		python -m fforma.experiments.base.tourism \
+		python -m fforma.experiments.base.main \
 							--directory ${EXPERIMENTS_DIR} --training \
 							--dataset ${dataset}
 
