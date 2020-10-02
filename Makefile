@@ -24,8 +24,9 @@ base_cv: .require-dataset
 base_training: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.base.main \
-							--directory ${EXPERIMENTS_DIR} --training \
-							--dataset ${dataset}
+							--directory ${EXPERIMENTS_DIR} \
+							--dataset ${dataset} \
+							--training
 
 benchmarks: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
