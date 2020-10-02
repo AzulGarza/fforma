@@ -17,7 +17,7 @@ from fforma.meta_learner import MetaLearnerMean, MetaLearnerMedian
 
 
 def main(directory: str, dataset: str) -> None:
-
+    """Computes benchmarks for dataset."""
     path = Path(directory) / dataset.lower()
     base_data = pd.read_pickle(path / 'base'/ 'base_training.p')
 
