@@ -16,8 +16,6 @@ from fforma.experiments.datasets.tourism import TourismInfo, Tourism
 from fforma.metrics.numpy import mape, smape
 from fforma.utils.evaluation import evaluate_models
 
-URL_NBEATS = 'https://github.com/FedericoGarza/meta-data/releases/download/vnbeats/'
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -82,15 +80,14 @@ class BaseData:
         else:
             return self.smape_forecasts
 
-
 def get_base_data(train: Union[Tourism],
                   test: Union[Tourism],
                   info: Union[TourismInfo],
                   add_forecasts: Optional[pd.DataFrame] = None) -> 'BaseData':
     """
+
     Parameters
     ----------
-
     train:
     test:
     info:

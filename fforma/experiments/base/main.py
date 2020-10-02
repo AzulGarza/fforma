@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+"""
+Computes base forecasts to ensemble and includes nbeats forecasts.
+"""
 import argparse
 from pathlib import Path
 import logging
@@ -8,14 +11,13 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .common import get_base_data, URL_NBEATS
-from fforma.experiments.datasets.common import maybe_download_decompress
-from fforma.experiments.datasets.tourism import Tourism, TourismInfo
+from .common import get_base_data
 from fforma.experiments.datasets.m3 import M3, M3Info
+from fforma.experiments.datasets.tourism import Tourism, TourismInfo
 
 
 def _dataset(dataset: str):
-
+    """Returns data and info classes of dataset."""
     if dataset == 'tourism':
         return Tourism, TourismInfo
     elif dataset == 'm3':
@@ -24,7 +26,7 @@ def _dataset(dataset: str):
         raise Exception(f'Unknown dataset: {dataset}')
 
 def main(directory: str, dataset: str, training: bool) -> None:
-
+    """Computes cv or training base data for dataset."""
     data_class, info_class = _dataset(dataset)
 
     train = data_class.load(directory)
@@ -36,17 +38,11 @@ def main(directory: str, dataset: str, training: bool) -> None:
         train, test = train.split_validation()
         label = 'cv'
 
-    dir_meta_data = Path(directory) / dataset / 'base'
-    dir_meta_data.mkdir(parents=True, exist_ok=True)
+    dir_base_data = Path(directory) / dataset / 'base'
+    dir_base_data.mkdir(parents=True, exist_ok=True)
 
-    logger.info('Downloading nbeats data')
-    dir_meta_data_nbeats = dir_meta_data / 'nbeats'
-    dir_meta_data_nbeats.mkdir(parents=True, exist_ok=True)
-    file_nbeats = f'{dataset}_forecasts_{label}.p'
-    url_nbeats = URL_NBEATS + file_nbeats
-    needed_data = ('raw/' + file_nbeats,)
-    maybe_download_decompress(dir_meta_data_nbeats, url_nbeats, needed_data)
-    forecasts_nbeats = pd.read_pickle(dir_meta_data_nbeats / 'raw' / file_nbeats)
+    file_nbeats = dir_base_data / 'nbeats' / f'{dataset}_forecasts_{label}.p'
+    forecasts_nbeats = pd.read_pickle(file_nbeats)
 
     logger.info(f'Calculating base data for {label}')
     base_data = get_base_data(train, test, info_class, forecasts_nbeats)
