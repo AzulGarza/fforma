@@ -15,19 +15,23 @@ init:
 
 base: base_cv base_training
 
-base_cv:
+base_cv: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
-		python -m fforma.experiments.base.tourism --directory ${EXPERIMENTS_DIR}
+		python -m fforma.experiments.base.main \
+							--directory ${EXPERIMENTS_DIR} \
+							--dataset ${dataset}
 
-base_training:
+base_training: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.base.tourism \
-							--directory ${EXPERIMENTS_DIR} --training
+							--directory ${EXPERIMENTS_DIR} --training \
+							--dataset ${dataset}
 
-benchmarks:
+benchmarks: .require-dataset
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.benchmarks.main \
-							--directory ${EXPERIMENTS_DIR} --dataset tourism
+							--directory ${EXPERIMENTS_DIR} \
+							--dataset ${dataset}
 
 run: .require-model .require-splits .require-trials
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
@@ -48,6 +52,11 @@ tunnel:
 .require-dir:
 ifndef dir
 	$(error dir is required)
+endif
+
+.require-dataset:
+ifndef dataset
+	$(error dataset is required)
 endif
 
 .require-model:
