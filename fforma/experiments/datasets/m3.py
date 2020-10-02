@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from dataclasses import astuple, dataclass
+from dataclasses import  dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from .common import maybe_download_decompress
+import numpy as np
+import pandas as pd
+
+from .common import download_file
 
 SOURCE_URL = 'https://forecasters.org/data/m3comp/M3C.xls'
-
-NEEDED_DATA = ('raw/M3C.xls',)
 
 
 @dataclass
@@ -70,11 +68,7 @@ class M3:
         training: bool
             Wheter return training or testing data. Default True.
         """
-
-        path = Path(directory) / 'm3'
-        M3.download(path)
-
-        path = path / 'raw'
+        path = Path(directory) / 'm3' / 'datasets'
 
         data = []
         groups = {}
@@ -108,8 +102,18 @@ class M3:
 
     @staticmethod
     def download(directory: Path) -> None:
-        """Download Tourism Dataset."""
-        maybe_download_decompress(directory, SOURCE_URL, NEEDED_DATA)
+        """Download M3 Dataset."""
+        path = Path(directory) / 'm3' / 'datasets'
+        download_file(path, SOURCE_URL)
+
+    @staticmethod
+    def download_nbeats_forecasts(directory: str) -> None:
+        """Download nbeats forecasts for M3."""
+        path = Path(directory) / 'm3' / 'base' / 'nbeats'
+
+        for kind in ['cv', 'training']:
+            url_nbeats_m3 = URL_NBEATS + f'tourism_forecasts_{kind}.p'
+            download_file(path, url_nbeats_m3)
 
     def get_group(self, group: str) -> 'M3':
         """Filters group data.

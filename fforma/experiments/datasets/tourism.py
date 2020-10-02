@@ -1,24 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from dataclasses import astuple, dataclass
+from dataclasses import  dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from .common import maybe_download_decompress
+import numpy as np
+import pandas as pd
+
+from .common import download_file, URL_NBEATS
 
 SOURCE_URL = 'https://robjhyndman.com/data/27-3-Athanasopoulos1.zip'
-
-RAW_DIR = 'raw/decompressed_data'
-NEEDED_DATA = (f'{RAW_DIR}/monthly_in.csv',
-               f'{RAW_DIR}/monthly_oos.csv',
-               f'{RAW_DIR}/quarterly_in.csv',
-               f'{RAW_DIR}/quarterly_oos.csv',
-               f'{RAW_DIR}/yearly_in.csv',
-               f'{RAW_DIR}/yearly_oos.csv')
 
 
 @dataclass
@@ -68,11 +60,7 @@ class Tourism:
         training: bool
             Wheter return training or testing data. Default True.
         """
-
-        path = Path(directory) / 'tourism'
-        Tourism.download(path)
-
-        path = path / 'raw' / 'decompressed_data'
+        path = Path(directory) / 'tourism' / 'datasets'
 
         data = []
         groups = {}
@@ -108,9 +96,19 @@ class Tourism:
         return Tourism(y=data, groups=groups, train_data=training)
 
     @staticmethod
-    def download(directory: Path) -> None:
+    def download(directory: str) -> None:
         """Download Tourism Dataset."""
-        maybe_download_decompress(directory, SOURCE_URL, NEEDED_DATA)
+        path = Path(directory) / 'tourism' / 'datasets'
+        download_file(path, SOURCE_URL, decompress=True)
+
+    @staticmethod
+    def download_nbeats_forecasts(directory: str) -> None:
+        """Download nbeats forecasts for Tourism."""
+        path = Path(directory) / 'tourism' / 'base' / 'nbeats'
+
+        for kind in ['cv', 'training']:
+            url_nbeats_tourism = URL_NBEATS + f'tourism_forecasts_{kind}.p'
+            download_file(path, url_nbeats_tourism)
 
     def get_group(self, group: str) -> 'Tourism':
         """Filters group data.
