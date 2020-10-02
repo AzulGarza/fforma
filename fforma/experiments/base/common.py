@@ -107,22 +107,10 @@ def get_base_data(train: Union[Tourism],
         logger.info(group.name)
 
         seasonality = group.seasonality
+        meta_models = _meta_models(seasonality, info.bases)
 
         train_group = train.get_group(group.name).y
         ground_truth_group = test.get_group(group.name).y
-
-        meta_models = {
-            'auto_arima_forec': ARIMA(seasonality, stepwise=False, approximation=False),
-            'ets_forec': ETS(seasonality),
-            'nnetar_forec': NNETAR(seasonality),
-            'tbats_forec': TBATS(seasonality),
-            'stlm_ar_forec': STLMFFORMA(seasonality),
-            'rw_drift_forec': RandomWalk(seasonality, drift=True),
-            'theta_forec': ThetaF(seasonality),
-            'naive_forec': NaiveR(seasonality),
-            'snaive_forec': SeasonalNaiveR(seasonality),
-            'naive2_forec': Naive2(seasonality)
-        }
 
         logger.info('Calculating features')
         features_group = tsfeatures_r(train_group, freq=seasonality)
@@ -132,16 +120,20 @@ def get_base_data(train: Union[Tourism],
         features.append(features_group)
 
         logger.info('Calculating forecasts')
-        models = BaseModelsTrainer(meta_models).fit(None, train_group)
-        forecasts_group = models.predict(ground_truth_group.drop('y', 1))
+        forecasts_group = ground_truth_group.drop('y', 1)
+        if meta_models:
+            models = BaseModelsTrainer(meta_models).fit(None, train_group)
+            forecasts_group = models.predict(forecasts_group)
         forecasts_group = forecasts_group.query('unique_id in @ids_group')
         forecasts_group = forecasts_group.sort_values(['unique_id', 'ds'])
+        
         if add_forecasts is not None:
             forecasts_group = forecasts_group.merge(add_forecasts,
                                                     how='left',
                                                     on=['unique_id', 'ds'])
         forecasts.append(forecasts_group)
 
+        logger.info('Adding ground truth')
         ground_truth_group = ground_truth_group.query('unique_id in @ids_group')
         ground_truth_group = ground_truth_group.sort_values(['unique_id', 'ds'])
         ground_truth.append(ground_truth_group)
@@ -176,3 +168,22 @@ def get_base_data(train: Union[Tourism],
                     mape_forecasts=mape_forecasts, \
                     smape_forecasts=smape_forecasts, \
                     groups=groups)
+
+def _meta_models(seasonality: int, models: Iterable) -> Dict:
+    """Returns dict of models."""
+    meta_models = {
+        'auto_arima_forec': ARIMA(seasonality, stepwise=False, approximation=False),
+        'ets_forec': ETS(seasonality),
+        'nnetar_forec': NNETAR(seasonality),
+        'tbats_forec': TBATS(seasonality),
+        'stlm_ar_forec': STLMFFORMA(seasonality),
+        'rw_drift_forec': RandomWalk(seasonality, drift=True),
+        'theta_forec': ThetaF(seasonality),
+        'naive_forec': NaiveR(seasonality),
+        'snaive_forec': SeasonalNaiveR(seasonality),
+        'naive2_forec': Naive2(seasonality)
+    }
+
+    meta_models = {key: value for key, value in meta_models.items() if key in models}
+
+    return meta_models
