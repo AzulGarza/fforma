@@ -13,6 +13,11 @@ DOCKER_PARAMETERS := \
 init:
 	docker build . -t ${IMAGE} && mkdir ${EXPERIMENTS_DIR}
 
+datasets:
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m fforma.experiments.datasets.main \
+							--directory ${EXPERIMENTS_DIR} 
+
 base: base_cv base_training
 
 base_cv: .require-dataset
