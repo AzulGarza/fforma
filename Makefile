@@ -16,7 +16,7 @@ init:
 datasets:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
 		python -m fforma.experiments.datasets.main \
-							--directory ${EXPERIMENTS_DIR} 
+							--directory ${EXPERIMENTS_DIR}
 
 base: base_cv base_training
 
@@ -41,11 +41,12 @@ benchmarks: .require-dataset
 
 run: .require-dataset .require-model .require-splits .require-trials
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
-		python -m fforma.experiments.cross_validation.${dataset}.main \
+		python -m fforma.experiments.cross_validation.main \
 							--directory ${EXPERIMENTS_DIR} \
+							--dataset ${dataset} \
+							--model ${model} \
 							--n_splits ${splits} \
 							--n_trials ${trials} \
-							--model ${model}
 
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
