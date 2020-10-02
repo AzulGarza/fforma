@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+"""
+Calculates benchmark forecasts
+------------------------------
+- Mean ensemble.
+- Median ensemble.
+"""
 import argparse
 import logging
 from pathlib import Path
@@ -37,7 +43,8 @@ if __name__ == '__main__':
     parser.add_argument('--directory', required=True, type=str,
                         help='Experiments directory')
     parser.add_argument('--dataset', required=True, type=str,
-                        help='Either Tourism or M3')
+                        help='Either Tourism or M3',
+                        choices=['m3', 'tourism'])
 
     args = parser.parse_args()
 
