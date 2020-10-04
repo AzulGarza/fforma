@@ -79,6 +79,6 @@ ifndef splits
 endif
 
 .require-trials:
-ifndef model
+ifndef trials
 	$(error trials is required)
 endif
