@@ -26,11 +26,11 @@ def main(directory: str, dataset: str) -> None:
 
     logger.info('Computing mean benchmark')
     benchmark_mean = MetaLearnerMean().fit(base_data.forecasts).predict()
-    benchmark_mean.rename({'y_hat': 'median_ensemble_forec'}, axis=1, inplace=True)
+    benchmark_mean.rename({'y_hat': 'mean_ensemble_forec'}, axis=1, inplace=True)
 
     logger.info('Computing median benchmark')
     benchmark_median = MetaLearnerMedian().fit(base_data.forecasts).predict()
-    benchmark_median.rename({'y_hat': 'mean_ensemble_forec'}, axis=1, inplace=True)
+    benchmark_median.rename({'y_hat': 'median_ensemble_forec'}, axis=1, inplace=True)
 
     benchmarks = benchmark_mean.merge(benchmark_median,
                                       how='left',
