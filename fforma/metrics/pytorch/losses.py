@@ -4,20 +4,10 @@
 import torch as t
 import torch.nn as nn
 
-def divide_no_nan(a, b):
-    """
-    Auxiliary funtion to handle divide by 0
-    """
-    div = a / b
-    div[div != div] = 0.0
-    div[div == float('inf')] = 0.0
-    return div
+from ..utils import divide_no_nan
 
-#############################################################################
-# FORECASTING LOSSES
-#############################################################################
 
-def MAPELoss(y, y_hat, mask=None):
+def mape_loss(y, y_hat, mask=None):
     """MAPE Loss
 
     Calculates Mean Absolute Percentage Error between
@@ -42,22 +32,8 @@ def MAPELoss(y, y_hat, mask=None):
     mape:
     Mean absolute percentage error.
     """
-    mask = divide_no_nan(mask, t.abs(y))
-    mape = t.abs(y - y_hat) * mask
-    mape = t.mean(mape)
-    return mape
-
-# def MAPELoss(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor):
-#     """
-#     MAPE loss as defined in: https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
-
-#     :param forecast: Forecast values. Shape: batch, time
-#     :param target: Target values. Shape: batch, time
-#     :param mask: 0/1 mask. Shape: batch, time
-#     :return: Loss value
-#     """
-#     weights = divide_no_nan(mask, target)
-#     return t.mean(t.abs((forecast - target) * weights))
+    weights = divide_no_nan(mask, y)
+    return t.mean(t.abs((y - y_hat) * t.abs(weights)))
 
 def MSEloss(y, y_hat, mask=None):
     """MSE Loss
@@ -121,11 +97,12 @@ def SMAPELoss(y, y_hat, mask=None):
     """
     if mask is None:
         mask = t.ones(y_hat.size())
-    delta_y = t.abs((y - y_hat))
+    delta_y = t.abs(y - y_hat)
     scale = t.abs(y) + t.abs(y_hat)
     smape = divide_no_nan(delta_y, scale)
     smape = smape * mask
-    smape = 2 * t.mean(smape)
+    smape = 200 * t.mean(smape)
+
     return smape
 
 
@@ -170,7 +147,7 @@ def MASELoss(y, y_hat, y_insample, seasonality, mask=None) :
     return mase
 
 
-def PinballLoss(y, y_hat, mask=None):
+def pinball_loss(y, y_hat, mask=None, tau=0.5):
     """Pinball Loss
     Computes the pinball loss between y and y_hat.
 
@@ -193,7 +170,19 @@ def PinballLoss(y, y_hat, mask=None):
     if mask is None:
         mask = t.ones(y_hat.size())
     delta_y = t.sub(y, y_hat)
-    pinball = t.max(t.mul(self.tau, delta_y), t.mul((self.tau - 1), delta_y))
+    pinball = t.max(t.mul(tau, delta_y), t.mul((tau - 1), delta_y))
     pinball = pinball * mask
     pinball = t.mean(pinball)
+
     return pinball
+
+def smape_1_loss(forecast: t.Tensor, target: t.Tensor, mask: t.Tensor) -> t.float:
+    """
+    sMAPE loss as defined in "Appendix A" of
+    http://www.forecastingprinciples.com/files/pdf/Makridakia-The%20M3%20Competition.pdf
+    :param forecast: Forecast values. Shape: batch, time
+    :param target: Target values. Shape: batch, time
+    :param mask: 0/1 mask. Shape: batch, time
+    :return: Loss value
+    """
+    return 200 * t.mean(divide_no_nan(t.abs(forecast - target), forecast.data + target.data) * mask)
