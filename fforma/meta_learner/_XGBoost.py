@@ -3,7 +3,7 @@
 
 from copy import deepcopy
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import multiprocessing as mp
@@ -22,18 +22,22 @@ class MetaLearnerXGBoost:
 
     Parameters
     ----------
+    xgb_params: Dict
+        Parameters to be used by xgboost.
     """
 
-    def __init__(self, params: Dict) -> 'MetaLearnerXGBoost':
-        params = deepcopy(params)
-
-        self.threads = params.pop('threads')
+    def __init__(self, xgb_params: Dict,
+                 benchmark: str,
+                 n_estimators: int,
+                 random_seed: Optional[int] = None,
+                 threads: Optional[int] = None) -> 'MetaLearnerXGBoost':
+        self.threads = threads
         if self.threads is None:
             self.threads = mp.cpu_count()
 
-        self.num_round = int(params.pop('n_estimators'))
-        self.random_seed = params.pop('random_seed')
-        self.benchmark = params.pop('benchmark')
+        self.num_round = n_estimators
+        self.random_seed = random_seed
+        self.benchmark = benchmark
 
         init_params = {
             'objective': 'multi:softprob',
@@ -42,7 +46,10 @@ class MetaLearnerXGBoost:
             'disable_default_eval_metric': 1
         }
 
-        self.params = {**params, **init_params}
+        self.params = {**xgb_params, **init_params}
+
+        self.models = None
+        self.contribution_to_error = None
 
     def fobj(self, predt: np.ndarray, dtrain: xgb.DMatrix) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -79,11 +86,14 @@ class MetaLearnerXGBoost:
         Parameters
         ----------
         """
+        if self.benchmark not in errors.columns:
+            raise Exception(f'Benchmark {self.benchmark} must be part of errors')
 
-        for col in errors.columns.difference(['unique_id', self.benchmark]):
+        self.models = errors.columns.difference(['unique_id', self.benchmark])
+        self.models = list(self.models)
+        for col in self.models:
             errors[col] /= errors[self.benchmark]
-        errors[self.benchmark] /= errors[self.benchmark]
-        errors = errors.set_index(['unique_id'])
+        errors = errors.set_index('unique_id')[self.models]
 
         best_models_count = errors.idxmin(axis=1).value_counts()
         best_models_count = pd.Series(best_models_count, index=errors.columns)
@@ -94,6 +104,8 @@ class MetaLearnerXGBoost:
             logger.info(f'Models {loser} never win.')
             logger.info('Removing it...\n')
             errors = errors.copy().drop(columns=loser_models)
+            for model in loser_models:
+                self.models.remove(model)
 
         self.contribution_to_error = errors.values
         best_models = self.contribution_to_error.argmin(axis=1)
@@ -127,7 +139,7 @@ class MetaLearnerXGBoost:
         check_is_fitted(self, 'gbm_model_')
 
         features = features.set_index('unique_id')
-        forecasts = forecasts.set_index(['unique_id', 'ds'])
+        forecasts = forecasts.set_index(['unique_id', 'ds'])[self.models]
 
         weights = self.gbm_model_.predict(xgb.DMatrix(features.values))
         weights = pd.DataFrame(weights,
