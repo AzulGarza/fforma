@@ -42,8 +42,18 @@ class TourismInfo:
     groups: Tuple = (Yearly, Quarterly, Monthly)
     bases: Tuple = ('nbeats_generic_mape_forec',
                     'nbeats_interpretable_mape_forec',
-                    'nbeats_*_mape_forec')
-    benchmark: str = 'nbeats_generic_mape_forec'
+                    'nbeats_*_mape_forec',
+                    'auto_arima_forec',
+                    'ets_forec',
+                    'nnetar_forec',
+                    'tbats_forec',
+                    'stlm_ar_forec',
+                    'rw_drift_forec',
+                    'theta_forec',
+                    'naive_forec',
+                    'snaive_forec',
+                    'naive2_forec')
+    benchmark: str = 'naive2_forec'
     name: str = 'Tourism'
 
 @dataclass
