@@ -40,10 +40,10 @@ class Monthly:
 @dataclass
 class TourismInfo:
     groups: Tuple = (Yearly, Quarterly, Monthly)
-    bases: Tuple = ('nbeats_generic_mape_forec',
-                    'nbeats_interpretable_mape_forec',
-                    'nbeats_*_mape_forec',
-                    'auto_arima_forec',
+    bases_nbeats: Tuple = ('nbeats_generic_mape_forec',
+                           'nbeats_interpretable_mape_forec',
+                           'nbeats_*_mape_forec')
+    bases: Tuple = ('auto_arima_forec',
                     'ets_forec',
                     'nnetar_forec',
                     'tbats_forec',

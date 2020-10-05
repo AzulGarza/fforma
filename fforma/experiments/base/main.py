@@ -44,7 +44,7 @@ def main(directory: str, dataset: str, training: bool) -> None:
     logger.info('Reading nbeats forecasts')
     file_nbeats = dir_base_data / 'nbeats' / f'{dataset}_forecasts_{label}.p'
     forecasts_nbeats = pd.read_pickle(file_nbeats)
-    forecasts_nbeats = forecasts_nbeats[['unique_id', 'ds'] + list(info_class.bases)]
+    forecasts_nbeats = forecasts_nbeats[['unique_id', 'ds'] + list(info_class.bases_nbeats)]
 
     logger.info(f'Calculating base data for {label}')
     base_data = get_base_data(train, test, info_class, forecasts_nbeats)
