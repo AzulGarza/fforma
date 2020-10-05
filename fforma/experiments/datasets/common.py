@@ -10,8 +10,6 @@ import zipfile
 import subprocess
 from tqdm import tqdm
 
-URL_NBEATS = 'https://github.com/FedericoGarza/meta-data/releases/download/vnbeats/'
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

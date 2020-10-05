@@ -8,9 +8,10 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from .common import download_file, URL_NBEATS
+from .common import download_file
 
 SOURCE_URL = 'https://robjhyndman.com/data/27-3-Athanasopoulos1.zip'
+BASE_URL = 'https://github.com/FedericoGarza/meta-data/releases/download/vtourism/'
 
 
 @dataclass
@@ -116,13 +117,14 @@ class Tourism:
         download_file(path, SOURCE_URL, decompress=True)
 
     @staticmethod
-    def download_nbeats_forecasts(directory: str) -> None:
+    def download_base(directory: str) -> None:
         """Download nbeats forecasts for Tourism."""
-        path = Path(directory) / 'tourism' / 'base' / 'nbeats'
+        path = Path(directory) / 'tourism' / 'base'
 
         for kind in ['cv', 'training']:
-            url_nbeats_tourism = URL_NBEATS + f'tourism_forecasts_{kind}.p'
-            download_file(path, url_nbeats_tourism)
+            for data in ['base', 'nbeats_forecasts']:
+                file_url = BASE_URL + f'{data}_{kind}.p'
+                download_file(path, file_url)
 
     def get_group(self, group: str) -> 'Tourism':
         """Filters group data.

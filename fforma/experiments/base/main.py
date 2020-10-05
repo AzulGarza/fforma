@@ -42,7 +42,7 @@ def main(directory: str, dataset: str, training: bool) -> None:
     dir_base_data.mkdir(parents=True, exist_ok=True)
 
     logger.info('Reading nbeats forecasts')
-    file_nbeats = dir_base_data / 'nbeats' / f'{dataset}_forecasts_{label}.p'
+    file_nbeats = dir_base_data / f'nbeats_forecasts_{label}.p'
     forecasts_nbeats = pd.read_pickle(file_nbeats)
     forecasts_nbeats = forecasts_nbeats[['unique_id', 'ds'] + list(info_class.bases_nbeats)]
 

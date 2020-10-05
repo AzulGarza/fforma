@@ -20,8 +20,8 @@ def main(directory: str) -> None:
 
     logger.info('\nDownloading tourism dataset')
     Tourism.download(directory)
-    logger.info('\nDownloading nbeats forecasts for tourism')
-    Tourism.download_nbeats_forecasts(directory)
+    logger.info('\nDownloading base data for tourism')
+    Tourism.download_base(directory)
 
     logger.info('\nDownloading m3 dataset')
     M3.download(directory)
