@@ -89,6 +89,8 @@ class MetaLearnerXGBoost:
         if self.benchmark not in errors.columns:
             raise Exception(f'Benchmark {self.benchmark} must be part of errors')
 
+        errors = errors.copy()
+
         self.models = errors.columns.difference(['unique_id', self.benchmark])
         self.models = list(self.models)
         for col in self.models:
@@ -103,7 +105,7 @@ class MetaLearnerXGBoost:
             loser = ', '.join(loser_models)
             logger.info(f'Models {loser} never win.')
             logger.info('Removing it...\n')
-            errors = errors.copy().drop(columns=loser_models)
+            errors = errors.drop(columns=loser_models)
             for model in loser_models:
                 self.models.remove(model)
 
