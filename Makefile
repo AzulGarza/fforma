@@ -11,7 +11,7 @@ DOCKER_PARAMETERS := \
 	-w /fforma
 
 init:
-	docker build . -t ${IMAGE} && mkdir ${EXPERIMENTS_DIR}
+	docker build . -t ${IMAGE} && mkdir -p ${EXPERIMENTS_DIR}
 
 datasets:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
