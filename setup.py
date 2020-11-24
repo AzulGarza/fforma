@@ -21,5 +21,6 @@ setuptools.setup(
     install_requires=[
         'lightgbm==2.3.1',
         'tqdm',
+        'dask-xgboost==0.11.1',
     ]
 )
