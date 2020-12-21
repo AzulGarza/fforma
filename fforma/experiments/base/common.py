@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from time import sleep
-from typing import Dict, Union, Iterable, Optional
+from typing import Dict, Iterable, List, Optional, Union
 
 import pandas as pd
 from tsfeatures.tsfeatures_r import tsfeatures_r
@@ -80,6 +80,28 @@ class BaseData:
         else:
             return self.smape_forecasts
 
+    def get_models(self, models: List) -> 'BaseData':
+        """Return interst models.
+
+        Parameters
+        ----------
+        models: list
+            List of interest models
+        """
+
+        items = ['unique_id', 'ds'] + models
+
+        forecasts = self.forecasts.filter(items=items)
+        mape_forecasts = self.mape_forecasts.filter(items=items)
+        smape_forecasts = self.smape_forecasts.filter(items=items)
+
+        return BaseData(features=self.features, forecasts=forecasts, \
+                        ground_truth=self.ground_truth,
+                        mape_forecasts=mape_forecasts, \
+                        smape_forecasts=smape_forecasts, \
+                        groups=self.groups)
+
+
 def get_base_data(train: Union[Tourism],
                   test: Union[Tourism],
                   info: Union[TourismInfo],
@@ -126,7 +148,7 @@ def get_base_data(train: Union[Tourism],
             forecasts_group = models.predict(forecasts_group)
         forecasts_group = forecasts_group.query('unique_id in @ids_group')
         forecasts_group = forecasts_group.sort_values(['unique_id', 'ds'])
-        
+
         if add_forecasts is not None:
             forecasts_group = forecasts_group.merge(add_forecasts,
                                                     how='left',
