@@ -9,7 +9,7 @@ import dask_xgboost as dxgb
 import numpy as np
 import xgboost as xgb
 from dask import delayed
-from dask.distributed import wait
+from dask.distributed import Client, wait
 from dask_xgboost.core import (
     _has_dask_collections,
     _package_evals,
@@ -312,9 +312,8 @@ class DistributedFFORMA:
         self.num_round = n_estimators
         self.params = {**params, **init_params}
 
-    def fit(self, client, features: dd.DataFrame, errors: dd.DataFrame):
-        errors = errors.values
-        errors.compute_chunk_sizes()
+    def fit(self, client: Client, features: dd.DataFrame, losses: dd.DataFrame):
+        errors = losses.to_dask_array(lengths=True)
         labels = errors.map_blocks(lambda x: np.arange(x.shape[0])).persist()
         self.params['num_class'] = errors.shape[1]
         self.gbm_model_ = train(client, self.params,
@@ -322,11 +321,14 @@ class DistributedFFORMA:
                                 labels,
                                 errors,
                                 num_boost_round=self.num_round)
+        weights = dxgb.predict(client, self.gbm_model_, features)
+        weights = dd.from_array(weights, columns=losses.columns)
+        weights.index = features.index
+        self.weights_ = weights
         return self
 
-    def predict(self, client, features: dd.DataFrame, forecasts: dd.DataFrame):
-        weights = dxgb.predict(client, self.gbm_model_, features)
-        weights = dd.from_array(weights, columns=forecasts.columns)
-        weights.index = features.index
-        y_hat = (weights * forecasts).sum(1).rename('fforma_prediction')
-        return y_hat
+    def predict(self, client: Client, base_predictions: dd.DataFrame):
+        fforma_predictions = (self.weights_ * base_predictions).sum(1)
+        fforma_predictions = fforma_predictions.rename('fforma_prediction')
+        all_predictions = dd.concat([base_predictions, fforma_predictions], axis=1)
+        return all_predictions
