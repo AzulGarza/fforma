@@ -5,35 +5,30 @@ channels:
   - pytorch
 dependencies:
   - python=3.7
-  - nomkl
-  - numpy==1.16.1
-  - pandas==0.25.2
-  - scikit-learn==0.23.1
-  - scipy==1.4.1
-  - statsmodels==0.11.1
-  - lightgbm==2.3.1
-  - patsy==0.5.1
-  - threadpoolctl
-  - seaborn
+  - numpy==1.19.5
+  - pandas==1.2.0
+  - scikit-learn==0.24.0
+  - statsmodels==0.12.1
+  - lightgbm==3.1.1
+  - seaborn==0.11.1
   - xgboost==0.90
-  - s3fs
-  - boto3
-  - cvxpy
-  - dask
-  - matplotlib==3.2.1
-  - tqdm==4.46.0
-  - pylint
-  - pyyaml
-  - pip
-  - pytest-cov
-  - rpy2
-  - r-base<4.0
-  - r-forecast
-  - r-data.table
-  - r-tsfeatures
-  - jupyterlab
-  - optuna
-  - pytorch==1.4.0
-  - xlrd
+  - s3fs==0.4.2
+  - boto3==1.16.50
+  - cvxpy==1.1.7
+  - dask==2020.12.0
+  - matplotlib==3.3.3
+  - tqdm==4.55.1
+  - pip==20.3.3
+  - rpy2==3.4.1
+  - r-base==3.6.3
+  - r-forecast==8.13
+  - r-data.table==1.13.6
+  - r-tsfeatures==1.0.2
+  - jupyterlab==3.0.1
+  - optuna==2.3.0
+  - python-dotenv==0.15.0
+  - pytorch==1.7.1
+  - pytorch-lightning==1.1.3
+  - xlrd==1.2.0
   - pip:
-    - tsfeatures==0.1.0
+    - tsfeatures==0.2.0
