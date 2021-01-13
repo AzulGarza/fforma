@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from math import sqrt
+from math import isnan, sqrt
 
 import numpy as np
 
@@ -61,6 +61,32 @@ def rmse(y: np.ndarray, y_hat: np.ndarray) -> float:
 
     return rmse
 
+def mae(y: np.ndarray, y_hat: np.ndarray) -> float:
+    """Calculates Mean Absolute Error.
+
+    MAE measures the prediction accuracy of a
+    forecasting method by calculating the absolute deviation
+    of the prediction and the true value at a given time and
+    averages these devations over the length of the series.
+    Finally the MAE will be in the same scale
+    as the original time series so its comparison with other
+    series is possible only if they share a common scale.
+
+    Parameters
+    ----------
+    y: numpy array
+      actual test values
+    y_hat: numpy array
+      predicted values
+
+    Return
+    ------
+    scalar: MAE
+    """
+    mae = np.mean(np.abs(y - y_hat))
+
+    return mae
+
 def mape(y: np.ndarray, y_hat: np.ndarray) -> float:
     """Calculates Mean Absolute Percentage Error.
 
@@ -82,8 +108,8 @@ def mape(y: np.ndarray, y_hat: np.ndarray) -> float:
     """
     delta_y = np.abs(y - y_hat)
     scale = np.abs(y)
-    mape = divide_no_nan(delta_y, scale)
-    mape = np.mean(mape)
+    mape = delta_y / scale
+    mape = np.ma.masked_invalid(mape).mean()
     mape = 100 * mape
 
     return mape
@@ -113,10 +139,11 @@ def smape(y: np.ndarray, y_hat: np.ndarray) -> float:
     """
     delta_y = np.abs(y - y_hat)
     scale = np.abs(y) + np.abs(y_hat)
-    smape = divide_no_nan(delta_y, scale)
-    smape = 200 * np.mean(smape)
+    smape = delta_y / scale
+    smape = 200 * np.ma.masked_invalid(smape).mean()
 
-    assert smape <= 200, 'SMAPE should be lower than 200'
+    if not isnan(smape):
+        assert smape <= 200, 'SMAPE should be lower than 200'
 
     return smape
 
