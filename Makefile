@@ -11,7 +11,7 @@ DOCKER_PARAMETERS := \
 	-w /fforma
 
 init:
-	docker build . -t ${IMAGE} && mkdir -p ${EXPERIMENTS_DIR}
+	docker build --no-cache -t ${IMAGE} . && mkdir -p ${EXPERIMENTS_DIR}
 
 datasets:
 	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
@@ -48,6 +48,10 @@ run: .require-dataset .require-model .require-splits .require-trials
 							--n_splits ${splits} \
 							--n_trials ${trials} \
 
+run_module: .require-module
+	docker run -it --rm ${DOCKER_PARAMETERS} ${IMAGE} \
+		python -m ${module}
+
 jupyter:
 	docker run -d --rm ${DOCKER_PARAMETERS} -e HOME=/tmp -p ${PORT}:8888 ${IMAGE} \
 		bash -c "jupyter ${JUPYTER_KIND} --ip=0.0.0.0 --no-browser --NotebookApp.token=''"
@@ -81,4 +85,9 @@ endif
 .require-trials:
 ifndef trials
 	$(error trials is required)
+endif
+
+.require-module:
+ifndef module
+	$(error module is required)
 endif
