@@ -89,12 +89,18 @@ class MetaLearnerXGBoost:
         if self.benchmark not in errors.columns:
             raise Exception(f'Benchmark {self.benchmark} must be part of errors')
 
+        equal_ids = np.array_equal(errors['unique_id'].values,
+                                   features['unique_id'].values)
+        if not equal_ids:
+            raise Exception('Features and errors must contain the same'
+                            'unique id and the same order')
+
         errors = errors.copy()
 
         self.models = errors.columns.difference(['unique_id', self.benchmark])
         self.models = list(self.models)
         for col in self.models:
-            errors[col] /= errors[self.benchmark]
+            errors[col] /= (errors[self.benchmark] + 1e-3)
         errors = errors.set_index('unique_id')[self.models]
 
         best_models_count = errors.idxmin(axis=1).value_counts()
