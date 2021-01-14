@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple, Union
 import logging
@@ -57,3 +58,32 @@ def download_file(directory: Union[str, Path], source_url: str, decompress: bool
             zip_ref.extractall(directory)
 
         logger.info(f'Successfully decompressed {filepath}')
+
+@dataclass
+class Info:
+    """
+    Info Dataclass of datasets.
+    Args:
+        groups (Tuple): Tuple of str groups
+        class_groups (Tuple): Tuple of dataclasses.
+    """
+    groups: Tuple[str]
+    class_groups: Tuple[dataclass]
+
+    def get_group(self, group: str):
+        """Gets dataclass of group."""
+        if group not in self.groups:
+            raise Exception(f'Unkown group {group}')
+
+        return self.class_groups[self.groups.index(group)]
+
+    def __getitem__(self, group: str):
+        """Gets dataclass of group."""
+        if group not in self.groups:
+            raise Exception(f'Unkown group {group}')
+
+        return self.class_groups[self.groups.index(group)]
+
+    def __iter__(self):
+        for group in self.groups:
+            yield group, self.get_group(group)
