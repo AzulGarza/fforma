@@ -118,9 +118,9 @@ def main(directory: str, group: str) -> None:
     forecasts = pd.concat([res[1] for res in results])
     features = pd.concat([res[2] for res in results])
 
-    meta.to_csv(base_path / 'meta-glb.csv', index=False)
-    forecasts.to_csv(base_path / 'forecasts-glb.csv', index=False)
-    features.to_csv(base_path / 'features-glb.csv', index=False)
+    meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
+    forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
+    features.to_csv(base_path / f'features-{group.lower()}.csv', index=False)
 
     logger.info('Results saved')
 
