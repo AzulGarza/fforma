@@ -17,8 +17,56 @@ def cleanear_brc(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
     """
     Cleans BRC dataset.
     """
+    ts = ts.copy()
+
+    fix_dates = ['2018-11-19', '2018-12-25',
+                 '2019-01-01', '2019-02-04', '2019-02-21',
+                 '2019-03-18', '2019-04-19', '2019-05-01',
+                 '2019-09-15', '2019-09-16', '2019-09-29',
+                 '2019-10-06', '2019-11-17', '2019-12-01',
+                 '2019-12-15', '2019-12-22', '2019-12-25',
+                 '2019-12-28', '2019-12-29', '2020-01-01',
+                 '2020-01-05', '2020-01-12', '2020-01-26',
+                 '2020-02-02', '2020-02-03', '2020-02-09',
+                 '2020-02-22', '2020-02-23']
+    seasonality = 7
+
+    seasonal_fix_dates = pd.to_datetime(fix_dates) - pd.Timedelta(days=seasonality)
+    seasonal_fix_dates = [date.strftime('%Y-%m-%d') for date in seasonal_fix_dates]
+
+    to_fix = [date for date in seasonal_fix_dates if date in fix_dates]
+    while to_fix:
+        seasonal_fix_dates = [(pd.to_datetime(date) - pd.Timedelta(days=seasonality)).strftime('%Y-%m-%d') \
+                              if date in to_fix else date \
+                              for date in seasonal_fix_dates]
+        to_fix = [date for date in seasonal_fix_dates if date in fix_dates]
+
+
+    def get_updated_ts(fix_date, date):
+        """
+        fix_date: this date fixes date.
+        date: date to fix.
+        """
+        fixed_date = ts.query('ds == @fix_date') \
+                       .replace({fix_date: date})
+
+        to_fix = ts.query('ds == @date')
+        equal_order = np.array_equal(fixed_date['unique_id'].values,
+                                     to_fix['unique_id'].values)
+
+        assert equal_order
+
+        fixed_date.index = to_fix.index
+
+        return fixed_date
+        
+    fixed_dates = [get_updated_ts(fix_date, date) \
+                   for fix_date, date in zip(seasonal_fix_dates, fix_dates)]
+    fixed_dates = pd.concat(fixed_dates)
+    ts.update(fixed_dates)
 
     ts['ds'] = pd.to_datetime(ts['ds'])
+    ts = ts.query('ds >= "2018-05-02"').reset_index(drop=True)
 
     return ts
 
