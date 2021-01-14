@@ -48,9 +48,7 @@ def main(directory: str, group: str) -> None:
     base_path.mkdir(exist_ok=True, parents=True)
 
     # Meta models
-    meta_models = {'auto_arima_forec': ARIMA(seasonality,
-                                             stepwise=False,
-                                             approximation=False),
+    meta_models = {'auto_arima_forec': ARIMA(seasonality),
                    'ets_forec': ETS(seasonality),
                    'nnetar_forec': NNETAR(seasonality),
                    'tbats_forec': TBATS(seasonality),
@@ -71,9 +69,9 @@ def main(directory: str, group: str) -> None:
             logger.info('File already saved\n')
             continue
 
-        test_cutoff = cutoff + pd.Timedelta(days=7)
-        train = ts_test.query('ds < @cutoff')
-        test = ts_test.query('ds >= @cutoff & ds < @test_cutoff').drop('y', 1)
+        test_cutoff = cutoff + pd.Timedelta(days=seasonality)
+        train = ts.query('ds < @cutoff')
+        test = ts.query('ds >= @cutoff & ds < @test_cutoff').drop('y', 1)
 
         logger.info('Features...')
         init = time()
