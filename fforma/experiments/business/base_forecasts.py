@@ -4,6 +4,7 @@
 import argparse
 import logging
 from functools import partial
+from gc import collect
 from pathlib import Path
 
 import numpy as np
@@ -101,6 +102,9 @@ def main(directory: str, group: str) -> None:
                 'forecasts': forecasts,}
 
         pd.to_pickle(meta, file)
+
+        del features, model, forecasts
+        collect() 
 
     logger.info(f'Forecast finished')
 
