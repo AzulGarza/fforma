@@ -60,7 +60,8 @@ def main(directory: str, group: str) -> None:
                    'snaive_forec': SeasonalNaiveR(seasonality),
                    'naive2_forec': Naive2(seasonality),}
 
-    cutoffs = pd.date_range(end=ts['ds'].max(), periods=54, freq='W-THU')
+    periods = 109 if group == 'GLB' else 91
+    cutoffs = pd.date_range(end=ts['ds'].max(), periods=periods, freq='W-THU')
 
     for cutoff in cutoffs:
         logger.info(f'============Cutoff: {cutoff}')
@@ -104,7 +105,7 @@ def main(directory: str, group: str) -> None:
         pd.to_pickle(meta, file)
 
         del features, model, forecasts
-        collect() 
+        collect()
 
     logger.info(f'Forecast finished')
 
