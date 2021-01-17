@@ -29,7 +29,7 @@ def long_to_wide(long_df, cols_to_parse=None,
 
     df_list = []
     for new_col, col in zip(cols_wide, cols_to_parse):
-        df = long_df_dask[col].groupby('unique_id').apply(lambda df: df.values)
+        df = long_df_dask[col].groupby('unique_id').apply(lambda df: df.values, meta=('object'))
         df = df.rename(new_col)
         df = df.to_frame()
         df_list.append(df)
