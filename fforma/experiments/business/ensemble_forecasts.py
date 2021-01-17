@@ -31,7 +31,7 @@ def _get_metric(metric: str) -> Callable:
     else:
         raise Exception(f'Unknown metrc: {metric}')
 
-def main(directory: str, group: str, metric: str) -> None:
+def main(directory: str, group: str, metric: str, replace: bool) -> None:
     logger.info('Reading dataset')
     ts = Business.load(directory, group)
     logger.info('Dataset readed')
@@ -73,7 +73,7 @@ def main(directory: str, group: str, metric: str) -> None:
         logger.info(f'Cutoff validation: {prev_cutoff} \nCutoff test: {cutoff}')
 
         file = saving_path / f'forecasts_cutoff={cutoff}_metric={metric}.p'
-        if file.exists():
+        if file.exists() and not replace:
             logger.info('File already saved\n')
             continue
 
@@ -167,7 +167,7 @@ def main(directory: str, group: str, metric: str) -> None:
     ensemble_forecasts.to_csv(file, index=False)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='HPO')
+    parser = argparse.ArgumentParser(description='Ensemble forecasts for Business Datasets')
     parser.add_argument('--directory', required=True, type=str,
                         help='experiments directory')
     parser.add_argument('--group', required=True, type=str,
@@ -176,10 +176,12 @@ if __name__ == '__main__':
     parser.add_argument('--metric', required=True, type=str,
                         help='Metric respect to optimize',
                         choices=['mae', 'mape', 'smape', 'pinball', 'rmse'])
+    parser.add_argument('--replace', required=False, action='store_true',
+                        help='Replace files already saved')
 
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    main(args.directory, args.group, args.metric)
+    main(args.directory, args.group, args.metric, args.replace)

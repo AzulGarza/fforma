@@ -125,10 +125,14 @@ def main(directory: str, group: str) -> None:
     forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
     features.to_csv(base_path / f'features-{group.lower()}.csv', index=False)
 
+    #Handling forecasts
+    forecasts = forecasts.replace([np.inf, -np.inf], np.nan)
+    forecasts['naive2_forec'] = forecasts['naive2_forec'].fillna(forecasts['naive_forec'])
+
     logger.info('Results saved')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='HPO')
+    parser = argparse.ArgumentParser(description='Base Forecasts for Business Datasets')
     parser.add_argument('--directory', required=True, type=str,
                         help='experiments directory')
     parser.add_argument('--group', required=True, type=str,
