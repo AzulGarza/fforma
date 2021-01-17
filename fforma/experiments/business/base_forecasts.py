@@ -6,6 +6,7 @@ import logging
 from functools import partial
 from gc import collect
 from pathlib import Path
+from typing import Iterable, List
 
 import numpy as np
 import pandas as pd
@@ -18,21 +19,31 @@ from fforma.base import Naive2, ARIMA, ETS, NNETAR, STLM, TBATS, STLMFFORMA, \
 from fforma.experiments.datasets.business import Business, BusinessInfo
 
 
-def _transform(file, models, feats_to_drop):
+def _transform_base_file(file: str,
+                         models: Iterable[str],
+                         feats_to_drop: List[str]):
+    """Transforms base file."""
 
     meta = pd.read_pickle(file)
 
     # Forecasts handling
     forecasts = meta.pop('forecasts') \
-                    .assign(train_cutoff = meta['train_cutoff'])
-
+                    .assign(train_cutoff=meta['train_cutoff']) \
+                    .replace([np.inf, -np.inf], np.nan)
+    forecasts['naive2_forec'] = forecasts['naive2_forec'].fillna(forecasts['naive_forec'])
     for model in models:
         forecasts[model] = forecasts[model].clip(lower=0)
+
+    if forecasts.isna().values.mean() > 0:
+        raise Exception(f'NAN forecasts found on {file}, please check.')
 
     # Feautures handling
     features = meta.pop('features')  \
                    .drop(feats_to_drop, 1) \
                    .assign(train_cutoff = meta['train_cutoff'])
+
+    if features.isna().values.mean() > 0:
+        raise Exception(f'NAN features found on {file}, please check.')
 
     return meta, forecasts, features
 
@@ -112,7 +123,7 @@ def main(directory: str, group: str) -> None:
     feats_to_drop = ['series_length', 'nperiods',
                      'seasonal_period', 'hurst', 'entropy']
 
-    transform = partial(_transform,
+    transform = partial(_transform_base_file,
                         models=meta_models.keys(),
                         feats_to_drop=feats_to_drop)
 
@@ -120,10 +131,6 @@ def main(directory: str, group: str) -> None:
     meta = pd.DataFrame([res[0] for res in results]).sort_values('test_cutoff')
     forecasts = pd.concat([res[1] for res in results])
     features = pd.concat([res[2] for res in results])
-
-    #Handling forecasts
-    forecasts = forecasts.replace([np.inf, -np.inf], np.nan)
-    forecasts['naive2_forec'] = forecasts['naive2_forec'].fillna(forecasts['naive_forec'])
 
     meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
     forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
