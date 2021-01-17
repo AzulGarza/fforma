@@ -53,6 +53,7 @@ def main(directory: str, group: str, metric: str) -> None:
     #processing meta
     #only evaluation of the last 53 weeks (53 + 1 week of validation for ensembles)
     first_cutoff, *_ = pd.date_range(end=ts['ds'].max(), periods=54, freq='W-THU')
+    first_cutoff  = first_cutoff.strftime('%Y-%m-%d')
     meta = meta.query('train_cutoff >= @first_cutoff')
     meta['prev_train_cutoff'] = meta['train_cutoff'].shift(1)
 
