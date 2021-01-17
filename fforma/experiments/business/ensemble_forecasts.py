@@ -49,6 +49,11 @@ def main(directory: str, group: str, metric: str) -> None:
     forecasts = pd.read_csv(base_path / f'forecasts-{group.lower()}.csv')
     forecasts['ds'] = pd.to_datetime(forecasts['ds'])
     features = pd.read_csv(base_path / f'features-{group.lower()}.csv')
+
+    #processing meta
+    #only evaluation of the last 53 weeks (53 + 1 week of validation for ensembles)
+    first_cutoff, *_ = pd.date_range(end=ts['ds'].max(), periods=54, freq='W-THU')
+    meta = meta.query('train_cutoff >= @first_cutoff')
     meta['prev_train_cutoff'] = meta['train_cutoff'].shift(1)
 
     # optimal params by hyndman
@@ -64,6 +69,7 @@ def main(directory: str, group: str, metric: str) -> None:
 
     for i, (prev_cutoff, cutoff) in enumerate(zip(meta['prev_train_cutoff'], meta['train_cutoff'])):
         logger.info(f'============Pct: {100 * i / meta.shape[0]}')
+        logger.info(f'Cutoff validation: {prev_cutoff} \nCutoff test: {cutoff}')
 
         file = saving_path / f'forecasts_cutoff={cutoff}_metric={metric}.p'
         if file.exists():
