@@ -127,7 +127,9 @@ def main(directory: str, group: str) -> None:
                         models=meta_models.keys(),
                         feats_to_drop=feats_to_drop)
 
-    results = [transform(file) for file in saving_path.glob(f'cutoff*freq={seasonality}.p')]
+    files = [saving_path / f'cutoff={cutoff.date()}_freq={seasonality}.p' \
+             for cutoff in cutoffs]
+    results = [transform(file) for file in files]
     meta = pd.DataFrame([res[0] for res in results]).sort_values('test_cutoff')
     forecasts = pd.concat([res[1] for res in results])
     features = pd.concat([res[2] for res in results])
