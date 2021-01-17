@@ -121,13 +121,13 @@ def main(directory: str, group: str) -> None:
     forecasts = pd.concat([res[1] for res in results])
     features = pd.concat([res[2] for res in results])
 
-    meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
-    forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
-    features.to_csv(base_path / f'features-{group.lower()}.csv', index=False)
-
     #Handling forecasts
     forecasts = forecasts.replace([np.inf, -np.inf], np.nan)
     forecasts['naive2_forec'] = forecasts['naive2_forec'].fillna(forecasts['naive_forec'])
+
+    meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
+    forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
+    features.to_csv(base_path / f'features-{group.lower()}.csv', index=False)
 
     logger.info('Results saved')
 
