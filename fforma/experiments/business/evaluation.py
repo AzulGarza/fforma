@@ -35,9 +35,10 @@ def main(directory: str, group: str) -> None:
                           .query('ds >= @min_ds')
             y = forecasts['y'].values
 
-        for n_out in range(0, 100, 5):
+        for pct in np.arange(0, 0.1, 0.01):
+            n_out = int(pct * y.shape[0])
             results_metric = {'metric': metric}
-            results_metric['n_outliers'] = n_out
+            results_metric['pct_outliers'] = pct
 
             for model in ['fforma', 'mean', 'softmin', 'best_model']:
                 y_hat = forecasts[f'{model}_ensemble'].values
