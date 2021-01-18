@@ -20,7 +20,7 @@ def main(directory: str, group: str) -> None:
     forecasts_path =  main_path / 'forecasts'
     evaluation_path = main_path / 'evaluation'
     if not evaluation_path.exists():
-        evaluation_path.mkdir(exist_ok=True, parent=True)
+        evaluation_path.mkdir(exist_ok=True, parents=True)
 
     metrics = ['mae', 'mape', 'smape', 'rmse']
 
