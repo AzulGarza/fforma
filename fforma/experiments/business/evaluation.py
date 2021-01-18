@@ -16,7 +16,12 @@ def main(directory: str, group: str) -> None:
     ts = Business.load(directory, group)
     logger.info('Dataset readed')
 
-    forecasts_path = Path(directory) / 'business' / 'forecasts'
+    main_path = Path(directory) / 'business'
+    forecasts_path =  main_path / 'forecasts'
+    evaluation_path = main_path / 'evaluation'
+    if not evaluation_path.exists():
+        evaluation_path.mkdir(exist_ok=True, parent=True)
+
     metrics = ['mae', 'mape', 'smape', 'rmse']
 
     results = []
@@ -56,6 +61,7 @@ def main(directory: str, group: str) -> None:
             results.append(results_metric)
 
     results = pd.DataFrame(results).round(2)
+    results.to_csv(evaluation_path / f'evaluation_{group}.csv', index=False)
 
     print(results.to_latex(index=False))
 
