@@ -17,12 +17,11 @@ def main(directory: str, group: str) -> None:
     logger.info('Dataset readed')
 
     forecasts_path = Path(directory) / 'business' / 'forecasts'
-    metrics = ['mae', 'mape', 'smape', 'rmse', 'pinball']
+    metrics = ['mae', 'mape', 'smape', 'rmse']
 
     results = []
     for metric in metrics:
         constant = 2 if metric in ['mape', 'smape'] else 0
-        results_metric = {'metric': metric}
         file = forecasts_path / f'ensemble_forecasts_group={group}_metric={metric}.csv'
 
         if not file.exists():
@@ -36,12 +35,25 @@ def main(directory: str, group: str) -> None:
                           .query('ds >= @min_ds')
             y = forecasts['y'].values
 
-        for model in ['fforma', 'mean', 'softmin', 'best_model']:
-            y_hat = forecasts[f'{model}_ensemble'].values
-            loss = _get_metric(metric)(y, y_hat) if y is not None else np.nan
-            results_metric[f'{model}_ensemble'] = loss
+        for n_out in range(0, 100, 5):
+            results_metric = {'metric': metric}
+            results_metric['n_outliers'] = n_out
 
-        results.append(results_metric)
+            for model in ['fforma', 'mean', 'softmin', 'best_model']:
+                y_hat = forecasts[f'{model}_ensemble'].values
+                delta_y = np.abs(y - y_hat)
+
+                index = delta_y.argsort()
+                y_sorted = y[index]
+                y_hat_sorted = y_hat[index]
+
+                y_wo_out = y_sorted[n_out:-n_out] if n_out > 0 else y_sorted
+                y_hat_wo_out = y_hat_sorted[n_out:-n_out] if n_out > 0 else  y_hat_sorted
+                loss = _get_metric(metric)(y_wo_out, y_hat_wo_out) if y is not None else np.nan
+                results_metric[f'{model}_ensemble'] = loss
+
+            results.append(results_metric)
+
     results = pd.DataFrame(results).round(2)
 
     print(results.to_latex(index=False))
