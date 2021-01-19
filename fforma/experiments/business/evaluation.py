@@ -11,9 +11,21 @@ import pandas as pd
 from fforma.experiments.datasets.business import Business
 from fforma.experiments.business.ensemble_forecasts import _get_metric
 
+
+def remove_outlier(df_in, col_name):
+    q1 = df_in[col_name].quantile(0.25)
+    q3 = df_in[col_name].quantile(0.75)
+    iqr = q3-q1 #Interquartile range
+    fence_low  = q1-1.5*iqr
+    fence_high = q3+1.5*iqr
+    df_out = df_in.loc[(df_in[col_name] > fence_low) & (df_in[col_name] < fence_high)]
+    return df_out
+
 def main(directory: str, group: str) -> None:
     logger.info('Reading dataset')
     ts = Business.load(directory, group)
+    ts = [remove_outlier(df, 'y') for _, df in ts.groupby('unique_id')]
+    ts = pd.concat(ts)
     logger.info('Dataset readed')
 
     main_path = Path(directory) / 'business'
@@ -32,6 +44,7 @@ def main(directory: str, group: str) -> None:
         if not file.exists():
             y = None
             y_hat = None
+            continue
         else:
             forecasts = pd.read_csv(file)
             forecasts['ds'] = pd.to_datetime(forecasts['ds'])
