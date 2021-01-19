@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 from scipy.special import softmax
@@ -9,8 +11,8 @@ from sklearn.utils.validation import check_is_fitted
 
 class MetaLearnerMean(object):
     """Mean ensemble."""
-    def __init__(self):
-        pass
+    def __init__(self, benchmark: Optional[str] = None):
+        self.benchmark = benchmark
 
     def fit(self, X: pd.DataFrame, y=None) -> 'MetaLearnerMean':
         """
@@ -22,7 +24,9 @@ class MetaLearnerMean(object):
             DataFrame with columns unique_id, ds and models to ensemble.
         """
         y_hat_ = X[['unique_id', 'ds']].copy()
-        y_hat_['y_hat'] = X.drop(['unique_id','ds'], axis=1).mean(axis=1)
+        cols_to_drop = ['unique_id', 'ds']
+        if self.benchmark: cols_to_drop += [self.benchmark]
+        y_hat_['y_hat'] = X.drop(cols_to_drop, axis=1).mean(axis=1)
 
         self.y_hat_ = y_hat_
 
