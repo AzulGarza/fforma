@@ -49,7 +49,7 @@ def _transform_base_file(file: str,
 
     return meta, forecasts, features
 
-def main(directory: str, group: str) -> None:
+def main(directory: str, group: str, replace: bool) -> None:
     logger.info('Reading dataset')
     ts = Business.load(directory, group)
     logger.info('Dataset readed')
