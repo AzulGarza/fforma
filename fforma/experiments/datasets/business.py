@@ -13,12 +13,36 @@ from .common import Info
 load_dotenv()
 
 
+def remove_outliers(df: pd.DataFrame, seasonality: int) -> pd.DataFrame:
+    """
+    Removes outliers from data.
+    """
+    y = df['y'].values
+    q1, q3 = np.quantile(y, [0.25, 0.75])
+    iqr = q3 - q1
+    low = q1 - 1.5 * iqr
+    high = q3 + 1.5 * iqr
+
+    idx_to_replace, = np.where((y > high) | (y < low))
+
+    idx_replacements = idx_to_replace - seasonality
+
+    repeated = np.isin(idx_replacements, idx_to_replace)
+    repeated = idx_replacements[repeated]
+
+    for idx in repeated:
+        idx_replacements[idx_replacements == idx] = idx_replacements[idx_to_replace == idx]
+
+    y[idx_to_replace] = y[idx_replacements]
+
+    df['y'] = y
+
+    return df
+
 def cleanear_brc(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
     """
     Cleans BRC dataset.
     """
-    ts = ts.copy()
-
     fix_dates = ['2018-11-19', '2018-12-25',
                  '2019-01-01', '2019-02-04', '2019-02-21',
                  '2019-03-18', '2019-04-19', '2019-05-01',
@@ -29,7 +53,6 @@ def cleanear_brc(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
                  '2020-01-05', '2020-01-12', '2020-01-26',
                  '2020-02-02', '2020-02-03', '2020-02-09',
                  '2020-02-22', '2020-02-23']
-    seasonality = 7
 
     seasonal_fix_dates = pd.to_datetime(fix_dates) - pd.Timedelta(days=seasonality)
     seasonal_fix_dates = [date.strftime('%Y-%m-%d') for date in seasonal_fix_dates]
@@ -59,11 +82,14 @@ def cleanear_brc(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
         fixed_date.index = to_fix.index
 
         return fixed_date
-        
+
     fixed_dates = [get_updated_ts(fix_date, date) \
                    for fix_date, date in zip(seasonal_fix_dates, fix_dates)]
     fixed_dates = pd.concat(fixed_dates)
     ts.update(fixed_dates)
+
+    ts = ts.groupby('unique_id') \
+           .apply(remove_outliers, seasonality=7)
 
     ts['ds'] = pd.to_datetime(ts['ds'])
     ts = ts.query('ds >= "2018-05-02"').reset_index(drop=True)
@@ -74,7 +100,6 @@ def cleanear_glb(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
     """
     Cleans GLB dataset.
     """
-    ts = ts.copy()
     fix_dates = ['2019-04-30', '2019-05-01']
     seasonality = 7
 
@@ -87,7 +112,11 @@ def cleanear_glb(ts: pd.DataFrame, seasonality: int) -> pd.DataFrame:
 
     ts.update(fixed_dates)
 
+    ts = ts.groupby('unique_id') \
+           .apply(remove_outliers, seasonality=7)
+
     ts['ds'] = pd.to_datetime(ts['ds'])
+    ts = ts.query('ds >= "2018-04-01"').reset_index(drop=True)
 
     return ts
 
@@ -111,7 +140,7 @@ class Business:
     @staticmethod
     def load(directory: str,
              group: str,
-             return_weekly: bool = False):
+             cache: bool = True):
         """
         Downloads and loads Tourism data.
 
@@ -128,6 +157,12 @@ class Business:
         [1] Returns train+test sets.
         """
         path = Path(directory) / 'business' / 'datasets'
+        file_cache = path / f'ts-{group.lower()}.p'
+
+        if file_cache.exists() and cache:
+            df = pd.read_pickle(file_cache)
+
+            return df
 
         Business.download(directory, group)
 
@@ -136,13 +171,8 @@ class Business:
         df = pd.read_csv(path / f'ts-{group.lower()}.csv')
         df = class_group.cleaner(df, class_group.seasonality)
 
-        if return_weekly:
-            df = df.groupby(['unique_id', pd.Grouper(key='ds', freq='W-THU')]) \
-                   .sum() \
-                   .reset_index()
-
-            min_ds, max_ds = df['ds'].agg(['min', 'max'])
-            df = df.query('ds > @min_ds & ds < @max_ds')
+        if cache:
+            df.to_pickle(file_cache)
 
         return df
 
