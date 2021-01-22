@@ -40,7 +40,9 @@ def _transform_base_file(file: str,
     # Feautures handling
     features = meta.pop('features')  \
                    .drop(feats_to_drop, 1) \
-                   .assign(train_cutoff = meta['train_cutoff'])
+                   .assign(train_cutoff = meta['train_cutoff']) \
+                   .fillna(0) # Hyndman assumption
+                              # https://github.com/robjhyndman/M4metalearning/blob/61ddc7101680e9df7219c359587d0b509d2b50d6/R/generate_classif_problem.R#L67
 
     if features.isna().values.mean() > 0:
         raise Exception(f'NAN features found on {file}, please check.')
@@ -71,7 +73,11 @@ def main(directory: str, group: str) -> None:
                    'snaive_forec': SeasonalNaiveR(seasonality),
                    'naive2_forec': Naive2(seasonality),}
 
-    periods = 109 if group == 'GLB' else 91
+    ar_terms = [7, 14, 21]
+    for tau in [0.1, 0.2, 0.8, 0.9]:
+        meta_models[f'q_ar_{tau}'] = QuantileAutoRegression(tau=tau, ar_terms=ar_terms)
+
+    periods = 91
     cutoffs = pd.date_range(end=ts['ds'].max(), periods=periods, freq='W-THU')
 
     for cutoff in cutoffs:
@@ -129,10 +135,10 @@ def main(directory: str, group: str) -> None:
 
     files = [saving_path / f'cutoff={cutoff.date()}_freq={seasonality}.p' \
              for cutoff in cutoffs]
-    results = [transform(file) for file in files]
-    meta = pd.DataFrame([res[0] for res in results]).sort_values('test_cutoff')
-    forecasts = pd.concat([res[1] for res in results])
-    features = pd.concat([res[2] for res in results])
+    mata, forecasts, features = zip(*[transform(file) for file in files])
+    meta = pd.DataFrame(meta).sort_values('test_cutoff')
+    forecasts = pd.concat(forecasts)
+    features = pd.concat(features)
 
     meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
     forecasts.to_csv(base_path / f'forecasts-{group.lower()}.csv', index=False)
@@ -147,10 +153,12 @@ if __name__ == '__main__':
     parser.add_argument('--group', required=True, type=str,
                         help='group (GLB or BRC)',
                         choices=['GLB', 'BRC'])
+    parser.add_argument('--replace', required=False, action='store_true',
+                        help='Replace files already saved')
 
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    main(args.directory, args.group)
+    main(args.directory, args.group, args.replace)
