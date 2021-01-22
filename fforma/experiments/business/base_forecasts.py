@@ -15,7 +15,7 @@ from tsfeatures import tsfeatures
 
 from fforma.base.trainer import BaseModelsTrainer
 from fforma.base import Naive2, ARIMA, ETS, NNETAR, STLM, TBATS, STLMFFORMA, \
-                        RandomWalk, ThetaF, NaiveR, SeasonalNaiveR
+                        RandomWalk, ThetaF, NaiveR, SeasonalNaiveR, QuantileAutoRegression
 from fforma.experiments.datasets.business import Business, BusinessInfo
 
 
