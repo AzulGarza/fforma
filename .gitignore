@@ -140,3 +140,4 @@ hyperpar_tunning_*
 data
 R
 *.Rproj
+dask-worker-space

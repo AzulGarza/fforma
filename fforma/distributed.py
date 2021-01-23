@@ -312,22 +312,28 @@ class DistributedFFORMA:
         self.num_round = n_estimators
         self.params = {**params, **init_params}
 
-    def fit(self, client: Client, features: dd.DataFrame, losses: dd.DataFrame):
-        errors = losses.to_dask_array(lengths=True)
-        labels = errors.map_blocks(lambda x: np.arange(x.shape[0])).persist()
+    async def fit_async(self, client: Client, features: dd.DataFrame, losses: dd.DataFrame):
+        errors = losses.values
+        lengths = await client.compute(losses.map_partitions(len, enforce_metadata=False))
+        chunks = losses._validate_chunks(errors, tuple(lengths))
+        errors._chunks = chunks
+        labels = await client.persist(errors.map_blocks(lambda x: np.arange(x.shape[0])))
         self.params['num_class'] = errors.shape[1]
-        self.gbm_model_ = train(client, self.params,
-                                features,
-                                labels,
-                                errors,
-                                num_boost_round=self.num_round)
-        weights = dxgb.predict(client, self.gbm_model_, features)
-        weights = dd.from_array(weights, columns=losses.columns)
+        self.gbm_model_ = await train(client, self.params,
+                                      features,
+                                      labels,
+                                      errors,
+                                      num_boost_round=self.num_round)
+        weights = await dxgb.predict(client, self.gbm_model_, features)
+        weights = await dd.from_array(weights, columns=losses.columns)
         weights.index = features.index
         self.weights_ = weights
-        return self
+        return weights
 
-    def predict(self, client: Client, base_predictions: dd.DataFrame):
+    def fit(self, client: Client, features: dd.DataFrame, losses: dd.DataFrame):
+        return client.sync(self.fit_async, client, features, losses)
+
+    def predict(self, base_predictions: dd.DataFrame):
         fforma_predictions = (self.weights_ * base_predictions).sum(1)
         fforma_predictions = fforma_predictions.rename('fforma_prediction')
         all_predictions = dd.concat([base_predictions, fforma_predictions], axis=1)
