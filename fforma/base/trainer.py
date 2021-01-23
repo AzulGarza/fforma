@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import sys
 from copy import deepcopy
 from functools import partial
 from typing import Callable, Dict, List
 
-from dask import delayed, compute
 import dask.dataframe as dd
 import numpy as np
 import pandas as pd
-from multiprocessing import cpu_count, Pool
+from dask import delayed, compute
+from multiprocessing import cpu_count
 from sklearn.utils.validation import check_is_fitted
 
 from fforma.utils.reshaping import long_to_wide, train_to_horizontal, wide_to_long
@@ -102,7 +103,10 @@ def _fit_batch(batch: pd.DataFrame, models: Dict[str, Callable]) -> pd.DataFrame
 
         for model_name, model in models.items():
             model = deepcopy(model)
-            fitted_model = model.fit(X, y)
+            try:
+                fitted_model = model.fit(X, y)
+            except Exception as e:
+                raise Exception(f'Exception with {uid} and model {model_name}: {str(e)}')
 
             df_models.loc[uid, model_name] = fitted_model
 
@@ -148,7 +152,10 @@ def _predict_batch(batch: pd.DataFrame, models: List[str]) -> pd.DataFrame:
 
         for model_name in models.keys():
             model = deepcopy(df[model_name].values.item())
-            y_hat = model.predict(df_test)
+            try:
+                y_hat = model.predict(df_test)
+            except Exception as e:
+                raise Exception(f'Exception with {uid} and model {model_name}: {str(e)}')
 
             forecasts.loc[uid, model_name] = y_hat
 

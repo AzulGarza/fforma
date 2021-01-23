@@ -64,6 +64,10 @@ class QuantileAutoRegression:
         Wheter add + c to the model.
     max_diffs: int
         Max number of differences to apply.
+    adjust_ar_terms: bool
+        If some ar term results in a constant column
+        adjust_ar_terms = True removes this ar_term in the
+        analysis. If adjust_ar_terms = False raises an Exception.
 
     Notes
     -----
@@ -80,11 +84,13 @@ class QuantileAutoRegression:
     def __init__(self, tau: float,
                  ar_terms: List[int],
                  add_constant: bool = True,
-                 max_diffs: int = 10):
+                 max_diffs: int = 10,
+                 adjust_ar_terms: bool = True):
         self.tau = tau
         self.ar_terms = ar_terms
         self.add_constant = add_constant
         self.max_diffs = max_diffs
+        self.adjust_ar_terms = adjust_ar_terms
 
         self.min_ar, self.max_ar = np.min(ar_terms), np.max(ar_terms)
 
@@ -93,6 +99,23 @@ class QuantileAutoRegression:
         self.last_y_train: Number
         self.y_train: np.ndarray
         self.model_: RegressionResultsWrapper
+
+    def _check_X(self, X):
+        if self.is_constant:
+            return X
+
+        idx, = np.where(X.std(0) == 0)
+
+        if not self.adjust_ar_terms and idx:
+            raise Exception(f'AR terms [{", ".join([str(i) for i in idx])}] '
+                            'generate constant '
+                            'columns; try removing this terms or '
+                            'using others.')
+
+        X = np.delete(X, idx, 1)
+        self.ar_terms = np.delete(self.ar_terms, idx)
+
+        return X
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'QuantileAutoRegression':
         y = y.copy()
@@ -110,6 +133,8 @@ class QuantileAutoRegression:
 
         design_mat = embed(y, [0] + self.ar_terms)
         self.y_train, X_train = design_mat[:, 0], design_mat[:, 1:]
+
+        X_train = self._check_X(X_train)
 
         if self.add_constant:
             X_train = np.hstack([X_train, np.ones((len(X_train), 1))])
