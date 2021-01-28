@@ -47,6 +47,7 @@ def main(directory: str, group: str, replace: bool) -> None:
     base_path.mkdir(exist_ok=True, parents=True)
 
     # Meta models
+    meta_models = {}
     ar_terms = [7, 14, 28]
     for tau in [0.3, 0.5, 0.7, 0.9]:
         meta_models[f'q_ar_{tau}'] = QuantileAutoRegression(tau=tau,
