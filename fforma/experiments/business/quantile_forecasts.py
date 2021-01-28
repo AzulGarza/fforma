@@ -26,6 +26,7 @@ def _transform_base_file(file: str,
 
     # Forecasts handling
     forecasts = meta.pop('forecasts') \
+                    .filter(items=['unique_id', 'ds'] + list(models)) \
                     .assign(train_cutoff=meta['train_cutoff']) \
                     .replace([np.inf, -np.inf], np.nan)
 
@@ -97,7 +98,6 @@ def main(directory: str, group: str, replace: bool) -> None:
                 'forecasting_time': forecasting_time,
                 'train_cutoff': cutoff,
                 'test_cutoff': test_cutoff,
-                'features': features,
                 'forecasts': forecasts,}
 
         pd.to_pickle(meta, file)

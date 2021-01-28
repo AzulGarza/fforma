@@ -4,6 +4,7 @@
 import sys
 from copy import deepcopy
 from functools import partial
+from math import ceil
 from typing import Callable, Dict, List
 
 import dask.dataframe as dd
@@ -127,13 +128,13 @@ def _predict(X: pd.DataFrame,
 
     panel_df = y_hat_df.set_index('unique_id')
     panel_df = panel_df.filter(items=['horizon', 'X']).join(fitted_models)
+    panel_df = panel_df.sample(frac=1)
 
-    panel_df_dask = dd.from_pandas(panel_df.sample(frac=1),
-                                   npartitions=partitions)
-    panel_df_dask = panel_df_dask.to_delayed()
     predict_batch = partial(_predict_batch, models=models)
+    n = ceil(panel_df.shape[0] / partitions)
+    parts_df = [panel_df[i:i + n] for i in range(0, panel_df.shape[0], n)]
 
-    task = [delayed(predict_batch)(part) for part in panel_df_dask]
+    task = [delayed(predict_batch)(part) for part in parts_df]
 
     forecasts = compute(*task, scheduler=scheduler)
 
