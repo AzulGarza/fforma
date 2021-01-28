@@ -29,7 +29,7 @@ def _get_metric(metric: str) -> Callable:
     elif metric == 'pinball':
         return pinball_loss
     else:
-        raise Exception(f'Unknown metrc: {metric}')
+        raise Exception(f'Unknown metric: {metric}')
 
 def main(directory: str, group: str, metric: str, replace: bool) -> None:
     logger.info('Reading dataset')
@@ -69,7 +69,6 @@ def main(directory: str, group: str, metric: str, replace: bool) -> None:
     n_estimators = optimal_params.pop('n_estimators')
     benchmark = 'naive2_forec'
     random_seed = 1
-
 
     for i, (prev_cutoff, cutoff) in enumerate(zip(meta['prev_train_cutoff'], meta['train_cutoff'])):
         logger.info(f'============Pct: {100 * i / meta.shape[0]}')
@@ -177,7 +176,7 @@ if __name__ == '__main__':
                         help='group (GLB or BRC)',
                         choices=['GLB', 'BRC'])
     parser.add_argument('--metric', required=True, type=str,
-                        help='Metric respect to optimize',
+                        help='Metric to optimize',
                         choices=['mae', 'mape', 'smape', 'pinball', 'rmse'])
     parser.add_argument('--replace', required=False, action='store_true',
                         help='Replace files already saved')

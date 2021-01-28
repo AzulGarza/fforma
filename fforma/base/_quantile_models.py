@@ -8,6 +8,7 @@ from typing import List, Optional
 
 
 import numpy as np
+from sklearn.utils.validation import check_is_fitted
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 from statsmodels.regression.quantile_regression import QuantReg
 from statsmodels.tsa.stattools import adfuller
@@ -68,6 +69,12 @@ class QuantileAutoRegression:
         If some ar term results in a constant column
         adjust_ar_terms = True removes this ar_term in the
         analysis. If adjust_ar_terms = False raises an Exception.
+    add_trend: bool
+        Adds linear trend to design matrix.
+        If True, Dicky-Fuller test is not performed.
+    naive_forecasts: bool
+        Predicts seasonal naive using fitted values.
+        First ar_term used as seasonality.
 
     Notes
     -----
@@ -85,18 +92,23 @@ class QuantileAutoRegression:
                  ar_terms: List[int],
                  add_constant: bool = True,
                  max_diffs: int = 10,
-                 adjust_ar_terms: bool = True):
+                 adjust_ar_terms: bool = True,
+                 add_trend: bool = False,
+                 naive_forecasts: bool = False):
         self.tau = tau
         self.ar_terms = ar_terms
         self.add_constant = add_constant
         self.max_diffs = max_diffs
         self.adjust_ar_terms = adjust_ar_terms
+        self.add_trend = add_trend
+        self.naive_forecasts = naive_forecasts
 
         self.min_ar, self.max_ar = np.min(ar_terms), np.max(ar_terms)
 
         self.differences: int
         self.is_constant: bool
         self.last_y_train: Number
+        self.last_len_y: int
         self.y_train: np.ndarray
         self.model_: RegressionResultsWrapper
 
@@ -120,16 +132,18 @@ class QuantileAutoRegression:
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'QuantileAutoRegression':
         y = y.copy()
         self.last_y_train = y[-1]
+        self.last_len_y = len(y)
         self.is_constant = np.var(y) == 0
 
         # Convert y to an stationary process
         self.differences = 0
-        for _ in range(self.max_diffs):
-            _, pval, *_ = adfuller(y)
-            if pval < 0.05:
-                break
-            y = np.diff(y, 1)
-            self.differences += 1
+        if not self.add_trend:
+            for _ in range(self.max_diffs):
+                _, pval, *_ = adfuller(y)
+                if pval < 0.05:
+                    break
+                y = np.diff(y, 1)
+                self.differences += 1
 
         design_mat = embed(y, [0] + self.ar_terms)
         self.y_train, X_train = design_mat[:, 0], design_mat[:, 1:]
@@ -138,6 +152,12 @@ class QuantileAutoRegression:
 
         if self.add_constant:
             X_train = np.hstack([X_train, np.ones((len(X_train), 1))])
+
+        if self.add_trend:
+            trend = np.arange(self.last_len_y - len(X_train),
+                              self.last_len_y).reshape(-1, 1)
+            X_train = np.hstack([X_train, trend])
+
 
         if np.linalg.cond(X_train) > 1 / float_info.epsilon and not self.is_constant:
             raise Exception('X matrix is ill-conditioned '
@@ -149,27 +169,44 @@ class QuantileAutoRegression:
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
+        check_is_fitted(self)
         horizon = len(X)
 
-        y_hat = self.y_train
-        len_train = self.y_train.size
-        forecast_size = len_train + horizon
+        if self.naive_forecasts:
+            seasonality = self.ar_terms[0]
+            repetitions = int(np.ceil(horizon / seasonality))
+            y_hat = self.model_.fittedvalues[-seasonality:]
+            y_hat = np.tile(y_hat, repetitions)
+            y_hat = y_hat[:horizon]
 
-        while y_hat.size < forecast_size:
-            y_hat_placeholder = np.zeros(self.min_ar)
-            y_hat = np.concatenate([y_hat, y_hat_placeholder])
+        else:
+            y_hat = self.y_train
+            len_train = self.y_train.size
+            forecast_size = len_train + horizon
 
-            y_test = embed(y_hat, self.ar_terms)[-self.min_ar:]
+            counter = 0
+            while y_hat.size < forecast_size:
+                y_hat_placeholder = np.zeros(self.min_ar)
+                y_hat = np.concatenate([y_hat, y_hat_placeholder])
 
-            if self.add_constant:
-                y_test = np.hstack([y_test, np.ones((len(y_test), 1))])
+                X_test = embed(y_hat, self.ar_terms)[-self.min_ar:]
 
-            y_hat[-self.min_ar:] = self.model_.predict(y_test)
+                if self.add_constant:
+                    X_test = np.hstack([X_test, np.ones((len(X_test), 1))])
 
-        y_hat = y_hat[len_train:forecast_size]
+                if self.add_trend:
+                    delta = self.max_ar * counter
+                    trend = np.arange(self.last_len_y + delta,
+                                      self.last_len_y + len(X_test) + delta).reshape(-1, 1)
+                    X_test = np.hstack([X_test, trend])
+
+                y_hat[-self.min_ar:] = self.model_.predict(X_test)
+                counter += 1
+
+            y_hat = y_hat[len_train:forecast_size]
 
         if self.differences:
-            for i in range(self.differences): y_hat = y_hat.cumsum()
+            for _ in range(self.differences): y_hat = y_hat.cumsum()
             y_hat += self.last_y_train
 
         return y_hat

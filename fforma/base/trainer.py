@@ -124,7 +124,7 @@ def _predict(X: pd.DataFrame,
     panel_df = y_hat_df.set_index('unique_id')
     panel_df = panel_df.filter(items=['horizon', 'X']).join(fitted_models)
 
-    panel_df_dask = dd.from_pandas(panel_df,
+    panel_df_dask = dd.from_pandas(panel_df.sample(frac=1),
                                    npartitions=partitions)
     panel_df_dask = panel_df_dask.to_delayed()
     predict_batch = partial(_predict_batch, models=models)
