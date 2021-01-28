@@ -135,7 +135,7 @@ def main(directory: str, group: str, replace: bool) -> None:
     meta, forecasts, features = zip(*[transform(file) for file in files])
 
     meta = pd.DataFrame(meta).sort_values('test_cutoff')
-    forecasts = pd.concat(forecasts).filter(items=forecasts_cols)
+    forecasts = pd.concat(forecasts)
     features = pd.concat(features)
 
     meta.to_csv(base_path / f'meta-{group.lower()}.csv', index=False)
