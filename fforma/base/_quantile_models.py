@@ -155,6 +155,7 @@ class QuantileAutoRegression:
                 y = np.diff(y, 1)
                 self.differences += 1
 
+        design_mat = embed(y, [0] + self.ar_terms)
         self.y_train, X_train = design_mat[:, 0], design_mat[:, 1:]
 
         X_train = self._check_X(X_train)
