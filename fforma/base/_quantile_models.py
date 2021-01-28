@@ -6,12 +6,13 @@ from numbers import Number
 from sys import float_info
 from typing import List, Optional
 
-
 import numpy as np
 from sklearn.utils.validation import check_is_fitted
 from statsmodels.regression.linear_model import RegressionResultsWrapper
 from statsmodels.regression.quantile_regression import QuantReg
 from statsmodels.tsa.stattools import adfuller
+
+from fforma.base import Naive
 
 
 def embed(x: np.array, p: int) -> np.array:
@@ -81,6 +82,7 @@ class QuantileAutoRegression:
     [1] To avoid Dicky-Fuller test just use max_diffs = 0.
     [2] Be cautious when the time series is too short.
     [3] Setting tau = 0.5 equals to optimize for MAE.
+    [4] If y is constant, returns Naive model.
 
     Examples
     --------
@@ -113,6 +115,9 @@ class QuantileAutoRegression:
         self.model_: RegressionResultsWrapper
 
     def _check_X(self, X):
+        """
+        Checks if ar-matrix X has constant columns. If yes, removes it.
+        """
         if self.is_constant:
             return X
 
@@ -135,6 +140,11 @@ class QuantileAutoRegression:
         self.last_len_y = len(y)
         self.is_constant = np.var(y) == 0
 
+        if self.is_constant:
+            self.model_ = Naive().fit(None, y)
+
+            return self
+
         # Convert y to an stationary process
         self.differences = 0
         if not self.add_trend:
@@ -145,7 +155,6 @@ class QuantileAutoRegression:
                 y = np.diff(y, 1)
                 self.differences += 1
 
-        design_mat = embed(y, [0] + self.ar_terms)
         self.y_train, X_train = design_mat[:, 0], design_mat[:, 1:]
 
         X_train = self._check_X(X_train)
@@ -158,8 +167,7 @@ class QuantileAutoRegression:
                               self.last_len_y).reshape(-1, 1)
             X_train = np.hstack([X_train, trend])
 
-
-        if np.linalg.cond(X_train) > 1 / float_info.epsilon and not self.is_constant:
+        if np.linalg.cond(X_train) > 1 / float_info.epsilon:
             raise Exception('X matrix is ill-conditioned '
                             'try reducing number of ar_terms '
                             'or setting add_constant=False.')
@@ -170,6 +178,10 @@ class QuantileAutoRegression:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         check_is_fitted(self)
+
+        if self.is_constant:
+            return self.model_.predict(X)
+
         horizon = len(X)
 
         if self.naive_forecasts:
@@ -191,10 +203,10 @@ class QuantileAutoRegression:
 
                 X_test = embed(y_hat, self.ar_terms)[-self.min_ar:]
 
-                if self.add_constant:
+                if self.add_constant and not self.is_constant:
                     X_test = np.hstack([X_test, np.ones((len(X_test), 1))])
 
-                if self.add_trend:
+                if self.add_trend and not self.is_constant:
                     delta = self.max_ar * counter
                     trend = np.arange(self.last_len_y + delta,
                                       self.last_len_y + len(X_test) + delta).reshape(-1, 1)
