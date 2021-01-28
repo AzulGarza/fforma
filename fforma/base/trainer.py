@@ -28,6 +28,8 @@ class BaseModelsTrainer:
         Dask scheduler. See https://docs.dask.org/en/latest/setup/single-machine.html
         for details.
         Using "threads" can cause severe conflicts.
+    predict_scheduler: str
+        Dask scheduler for prediction task.
     partitions: int
         Number of partitions to be used in parallel processing.
         Default to None, number of cores minus 1.
@@ -35,9 +37,11 @@ class BaseModelsTrainer:
 
     def __init__(self, models: Dict[str, Callable],
                  scheduler: str = 'processes',
+                 predict_scheduler: str = 'processes',
                  partitions: int = None):
         self.models = models
         self.scheduler = scheduler
+        self.predict_scheduler = predict_scheduler
         self.partitions = cpu_count() - 1 if partitions is None else partitions
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> 'BaseModelsTrainer':
@@ -65,7 +69,7 @@ class BaseModelsTrainer:
         check_is_fitted(self, 'fitted_models_')
 
         forecasts = _predict(X, self.models, self.fitted_models_,
-                             self.partitions, self.scheduler)
+                             self.partitions, self.predict_scheduler)
 
         return forecasts
 

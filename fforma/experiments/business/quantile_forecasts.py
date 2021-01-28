@@ -82,7 +82,7 @@ def main(directory: str, group: str, replace: bool) -> None:
 
         logger.info('Training...')
         init = time()
-        model = BaseModelsTrainer(meta_models)
+        model = BaseModelsTrainer(meta_models, predict_scheduler='threads')
         model.fit(None, train)
         training_time = time() - init
         logger.info(f'Training time: {training_time}')
