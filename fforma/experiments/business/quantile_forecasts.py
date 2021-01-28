@@ -102,7 +102,7 @@ def main(directory: str, group: str, replace: bool) -> None:
 
         pd.to_pickle(meta, file)
 
-        del features, model, forecasts
+        del model, forecasts
         collect()
 
     logger.info(f'Forecast finished')
