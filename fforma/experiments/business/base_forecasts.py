@@ -28,6 +28,7 @@ def _transform_base_file(file: str,
 
     # Forecasts handling
     forecasts = meta.pop('forecasts') \
+                    .filter(items=['unique_id', 'ds'] + list(models)) \
                     .assign(train_cutoff=meta['train_cutoff']) \
                     .replace([np.inf, -np.inf], np.nan)
     forecasts['naive2_forec'] = forecasts['naive2_forec'].fillna(forecasts['naive_forec'])
@@ -134,7 +135,6 @@ def main(directory: str, group: str, replace: bool) -> None:
     meta, forecasts, features = zip(*[transform(file) for file in files])
 
     meta = pd.DataFrame(meta).sort_values('test_cutoff')
-    forecasts_cols = ['unique_id', 'ds'] + list(meta_models.keys())
     forecasts = pd.concat(forecasts).filter(items=forecasts_cols)
     features = pd.concat(features)
 

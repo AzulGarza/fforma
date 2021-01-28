@@ -59,6 +59,7 @@ def main(directory: str, group: str, metric: str, replace: bool) -> None:
     first_cutoff  = first_cutoff.strftime('%Y-%m-%d')
     meta = meta.query('train_cutoff >= @first_cutoff')
     meta['prev_train_cutoff'] = meta['train_cutoff'].shift(1)
+    meta = meta.iloc[1:]
 
     # optimal params by hyndman
     optimal_params = {'n_estimators': 94,
@@ -71,7 +72,7 @@ def main(directory: str, group: str, metric: str, replace: bool) -> None:
     random_seed = 1
 
     for i, (prev_cutoff, cutoff) in enumerate(zip(meta['prev_train_cutoff'], meta['train_cutoff'])):
-        logger.info(f'============Pct: {100 * i / meta.shape[0]}')
+        logger.info(f'============Remaining pct: {100 * (1 - i / meta.shape[0])}')
         logger.info(f'Cutoff validation: {prev_cutoff} \nCutoff test: {cutoff}')
 
         file = saving_path / f'forecasts_cutoff={cutoff}_metric={metric}.p'
@@ -79,15 +80,13 @@ def main(directory: str, group: str, metric: str, replace: bool) -> None:
             logger.info('File already saved\n')
             continue
 
-        if i == 0:
-            continue
         #print(prev_id_)
         logger.info('Wrangling')
         init = time()
         forecasts_train = forecasts.query('train_cutoff in @prev_cutoff') \
                                    .drop('train_cutoff', 1)
         forecasts_train = forecasts_train.merge(ts, how='left', on=['unique_id', 'ds'])
-        constant = 2 if metric in ['mape', 'smape'] else 0
+
         errors_train = evaluate_models(forecasts_train.filter(items=['unique_id', 'ds', 'y']),
                                        forecasts_train.drop('y', 1),
                                        metric_fun)
@@ -177,7 +176,7 @@ if __name__ == '__main__':
                         choices=['GLB', 'BRC'])
     parser.add_argument('--metric', required=True, type=str,
                         help='Metric to optimize',
-                        choices=['mae', 'mape', 'smape', 'pinball', 'rmse'])
+                        choices=['mae', 'mape', 'smape', 'rmse'])
     parser.add_argument('--replace', required=False, action='store_true',
                         help='Replace files already saved')
 
