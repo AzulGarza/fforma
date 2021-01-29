@@ -317,15 +317,15 @@ class DistributedFFORMA:
         lengths = await client.compute(losses.map_partitions(len, enforce_metadata=False))
         chunks = losses._validate_chunks(errors, tuple(lengths))
         errors._chunks = chunks
-        labels = await client.persist(errors.map_blocks(lambda x: np.arange(x.shape[0])))
+        labels = client.persist(errors.map_blocks(lambda x: np.arange(x.shape[0])))
         self.params['num_class'] = errors.shape[1]
         self.gbm_model_ = await train(client, self.params,
                                       features,
                                       labels,
                                       errors,
                                       num_boost_round=self.num_round)
-        weights = await dxgb.predict(client, self.gbm_model_, features)
-        weights = await dd.from_array(weights, columns=losses.columns)
+        weights = dxgb.predict(client, self.gbm_model_, features)
+        weights = dd.from_array(weights, columns=losses.columns)
         weights.index = features.index
         self.weights_ = weights
         return weights
