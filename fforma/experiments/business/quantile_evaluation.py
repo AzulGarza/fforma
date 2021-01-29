@@ -51,7 +51,7 @@ def main(directory: str, group: str) -> None:
 
     results = []
 
-    for metric in ['quantile', 'calibration']:
+    for metric in ['pinball', 'calibration']:
         for tau in [0.3, 0.5, 0.7, 0.9]:
             results_metric = {'quantile': tau, 'metric': metric}
             models = [f'q_ar_{tau}', f'q_ar_{tau}_naive',
