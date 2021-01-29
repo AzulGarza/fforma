@@ -38,16 +38,19 @@ def main(directory: str, group: str) -> None:
                   .query('ds >= @min_ds')
     y = forecasts['y'].values
 
+    class_models = ['q_ar', 'q_ar_naive', 'q_ar_trend', 'q_ar_naive_trend']
+
     results = []
     for tau in [0.3, 0.5, 0.7, 0.9]:
         results_metric = {'quantile': tau}
+        models = [f'q_ar_{tau}', f'q_ar_{tau}_naive',
+                  f'q_ar_{tau}_trend', f'q_ar_{tau}_naive_trend']
 
-        for model in [f'q_ar_{tau}', f'q_ar_{tau}_naive',
-                      f'q_ar_{tau}_trend', f'q_ar_{tau}_naive_trend']:
+        for model, class_model in zip(models, class_models):
             y_hat = forecasts[model].values
 
             loss = pinball_loss(y, y_hat, tau=tau)
-            results_metric[model] = loss
+            results_metric[class_model] = loss
 
         results.append(results_metric)
 
