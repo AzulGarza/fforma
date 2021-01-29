@@ -270,7 +270,7 @@ def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> float:
     return pinball
 
 def quantile_calibration(y: np.ndarray, y_hat: np.ndarray) -> float:
-        """Calculates the Quantile Calibration.
+    """Calculates the Quantile Calibration.
 
     Percentage of observations where y <= y_hat.
 
