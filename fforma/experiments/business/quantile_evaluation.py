@@ -4,12 +4,14 @@
 import argparse
 import logging
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 
 from fforma.experiments.datasets.business import Business
 from fforma.metrics.numpy import pinball_loss, quantile_calibration
+
 
 def _get_metric(metric: str) -> Callable:
     if metric == 'pinball':
