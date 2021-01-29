@@ -9,7 +9,7 @@ from ..utils import divide_no_nan
 
 
 AVAILABLE_METRICS = ['mse', 'rmse', 'mape', 'smape', 'mase', 'rmsse',
-                     'mini_owa', 'pinball_loss']
+                     'mini_owa', 'pinball_loss', 'quantile_calibration']
 
 
 def mse(y: np.ndarray, y_hat: np.ndarray) -> float:
@@ -242,7 +242,7 @@ def mini_owa(y: np.ndarray, y_hat: np.ndarray,
 
     return mini_owa
 
-def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> np.ndarray:
+def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> float:
     """Calculates the Pinball Loss.
 
     The Pinball loss measures the deviation of a quantile forecast.
@@ -268,3 +268,29 @@ def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> np.ndarray
     pinball = pinball.mean()
 
     return pinball
+
+def quantile_calibration(y: np.ndarray, y_hat: np.ndarray) -> float:
+        """Calculates the Quantile Calibration.
+
+    Percentage of observations where y <= y_hat.
+
+    Parameters
+    ----------
+    y: numpy array
+      actual test values
+    y_hat: numpy array of len h (forecasting horizon)
+      predicted values
+
+    Return
+    ------
+    return: quantile_calibration
+
+    Notes
+    -----
+    [1] It is expected for good models estimating tau quantile that
+        quantile_calibration(y, y_hat) = tau
+    """
+    comparison = y <= y_hat
+    calibration = comparison.mean()
+
+    return calibration

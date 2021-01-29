@@ -9,8 +9,15 @@ import numpy as np
 import pandas as pd
 
 from fforma.experiments.datasets.business import Business
-from fforma.metrics.numpy import pinball_loss
+from fforma.metrics.numpy import pinball_loss, quantile_calibration
 
+def _get_metric(metric: str) -> Callable:
+    if metric == 'pinball':
+        return pinball_loss
+    elif metric == 'calibration':
+        return quantile_calibration
+    else:
+        raise Exception(f'Unknown metric: {metric}')
 
 def main(directory: str, group: str) -> None:
     logger.info('Reading dataset')
@@ -41,18 +48,20 @@ def main(directory: str, group: str) -> None:
     class_models = ['q_ar', 'q_ar_naive', 'q_ar_trend', 'q_ar_naive_trend']
 
     results = []
-    for tau in [0.3, 0.5, 0.7, 0.9]:
-        results_metric = {'quantile': tau}
-        models = [f'q_ar_{tau}', f'q_ar_{tau}_naive',
-                  f'q_ar_{tau}_trend', f'q_ar_{tau}_naive_trend']
 
-        for model, class_model in zip(models, class_models):
-            y_hat = forecasts[model].values
+    for metric in ['quantile', 'calibration']:
+        for tau in [0.3, 0.5, 0.7, 0.9]:
+            results_metric = {'quantile': tau, 'metric': metric}
+            models = [f'q_ar_{tau}', f'q_ar_{tau}_naive',
+                      f'q_ar_{tau}_trend', f'q_ar_{tau}_naive_trend']
 
-            loss = pinball_loss(y, y_hat, tau=tau)
-            results_metric[class_model] = loss
+            for model, class_model in zip(models, class_models):
+                y_hat = forecasts[model].values
 
-        results.append(results_metric)
+                loss = _get_metric(metric)(y, y_hat, tau=tau)
+                results_metric[class_model] = loss
+
+            results.append(results_metric)
 
     results = pd.DataFrame(results).round(2)
     results.to_csv(evaluation_path / f'quantile-evaluation-{group.lower()}.csv', index=False)
