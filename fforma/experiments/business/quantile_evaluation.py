@@ -47,7 +47,7 @@ def main(directory: str, group: str) -> None:
             y_hat = forecasts[model].values
 
             loss = pinball_loss(y, y_hat, tau=tau)
-            results_metric[metric] = loss
+            results_metric[model] = loss
 
         results.append(results_metric)
 
