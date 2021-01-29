@@ -319,11 +319,11 @@ class DistributedFFORMA:
         errors._chunks = chunks
         labels = client.persist(errors.map_blocks(lambda x: np.arange(x.shape[0])))
         self.params['num_class'] = errors.shape[1]
-        self.gbm_model_ = await train(client, self.params,
-                                      features,
-                                      labels,
-                                      errors,
-                                      num_boost_round=self.num_round)
+        self.gbm_model_ = await _train(client, self.params,
+                                       features,
+                                       labels,
+                                       errors,
+                                       num_boost_round=self.num_round)
         weights = dxgb.predict(client, self.gbm_model_, features)
         weights = dd.from_array(weights, columns=losses.columns)
         weights.index = features.index
