@@ -13,11 +13,11 @@ from fforma.experiments.datasets.business import Business
 from fforma.metrics.numpy import pinball_loss, quantile_calibration
 
 
-def _get_metric(metric: str) -> Callable:
+def _get_metric(metric: str, y: np.ndarray, y_hat: np.ndarray, tau: float) -> Callable:
     if metric == 'pinball':
-        return pinball_loss
+        return pinball_loss(y, y_hat, tau)
     elif metric == 'calibration':
-        return quantile_calibration
+        return quantile_calibration(y, y_hat)
     else:
         raise Exception(f'Unknown metric: {metric}')
 
@@ -60,7 +60,7 @@ def main(directory: str, group: str) -> None:
             for model, class_model in zip(models, class_models):
                 y_hat = forecasts[model].values
 
-                loss = _get_metric(metric)(y, y_hat, tau=tau)
+                loss = _get_metric(metric, y, y_hat, tau=tau)
                 results_metric[class_model] = loss
 
             results.append(results_metric)
