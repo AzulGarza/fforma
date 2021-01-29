@@ -15,7 +15,6 @@ from fforma.metrics.numpy import pinball_loss
 def main(directory: str, group: str) -> None:
     logger.info('Reading dataset')
     ts = Business.load(directory, group)
-    ts = pd.concat(ts)
     logger.info('Dataset readed')
 
     main_path = Path(directory) / 'business'
@@ -24,7 +23,7 @@ def main(directory: str, group: str) -> None:
     if not evaluation_path.exists():
         evaluation_path.mkdir(exist_ok=True, parents=True)
 
-    file = forecasts_path / f'forecasts-group={group.lower()}-quantile.csv'
+    file = forecasts_path / f'forecasts-{group.lower()}-quantile.csv'
 
     if not file.exists():
         raise Exception('File does not exist')
@@ -32,7 +31,7 @@ def main(directory: str, group: str) -> None:
     forecasts = pd.read_csv(file)
     if forecasts.isna().values.mean() > 0:
         raise Exception('Some forecasts are NA, check procedure')
-        
+
     forecasts['ds'] = pd.to_datetime(forecasts['ds'])
     min_ds = forecasts['ds'].min()
     forecasts = ts.merge(forecasts, how='left', on=['unique_id', 'ds']) \
@@ -53,7 +52,7 @@ def main(directory: str, group: str) -> None:
         results.append(results_metric)
 
     results = pd.DataFrame(results).round(2)
-    results.to_csv(evaluation_path / f'quantile_evaluation_{group}.csv', index=False)
+    results.to_csv(evaluation_path / f'quantile-evaluation-{group.lower()}.csv', index=False)
 
     print(results.to_latex(index=False))
 
