@@ -34,7 +34,7 @@ def main(directory: str, group: str) -> None:
     if not evaluation_path.exists():
         evaluation_path.mkdir(exist_ok=True, parents=True)
 
-    metrics = ['mae', 'mape', 'smape', 'rmse']
+    metrics = ['mae', 'mape', 'smape', 'rmse', 'smape_mape']
 
     results = []
     for metric in metrics:
@@ -53,7 +53,7 @@ def main(directory: str, group: str) -> None:
                           .query('ds >= @min_ds')
             y = forecasts['y'].values
         for metric_eval in metrics:
-            for pct in np.arange(0, 0.1, 0.01):
+            for pct in [0]:#np.arange(0, 0.1, 0.01):
                 n_out = int(pct * y.shape[0])
                 results_metric = {'metric_train': metric, 'metric_eval': metric_eval}
                 results_metric['pct_outliers'] = pct

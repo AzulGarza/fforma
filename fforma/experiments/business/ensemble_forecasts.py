@@ -17,6 +17,11 @@ from fforma.utils.evaluation import evaluate_models
 from fforma.metrics.numpy import mae, mape, rmse, smape, pinball_loss
 
 
+def smape_mape(y: np.ndarray, y_hat: np.ndarray) -> float:
+    loss = smape(y, y_hat) + mape(y, y_hat)
+    loss /= 2
+    return loss
+
 def _get_metric(metric: str) -> Callable:
     if metric == 'rmse':
         return rmse
@@ -26,8 +31,8 @@ def _get_metric(metric: str) -> Callable:
         return smape
     elif metric == 'mae':
         return mae
-    elif metric == 'pinball':
-        return pinball_loss
+    elif metric == 'smape_mape':
+        return smape_mape
     else:
         raise Exception(f'Unknown metric: {metric}')
 
@@ -176,7 +181,7 @@ if __name__ == '__main__':
                         choices=['GLB', 'BRC'])
     parser.add_argument('--metric', required=True, type=str,
                         help='Metric to optimize',
-                        choices=['mae', 'mape', 'smape', 'rmse'])
+                        choices=['mae', 'mape', 'smape', 'rmse', 'smape_mape'])
     parser.add_argument('--replace', required=False, action='store_true',
                         help='Replace files already saved')
 
