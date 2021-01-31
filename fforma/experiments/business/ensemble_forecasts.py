@@ -120,7 +120,7 @@ def main(directory: str, group: str, metric: str, replace: bool) -> None:
         ######### Mean
         logger.info('Mean')
         init = time()
-        meta_learner = MetaLearnerMean(benchmark)
+        meta_learner = MetaLearnerMean()
         meta_learner = meta_learner.fit(forecasts_test)
         mean_forecasts = meta_learner.predict()
         mean_time = time() - init
