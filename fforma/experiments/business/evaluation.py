@@ -52,26 +52,26 @@ def main(directory: str, group: str) -> None:
             forecasts = ts.merge(forecasts, how='left', on=['unique_id', 'ds']) \
                           .query('ds >= @min_ds')
             y = forecasts['y'].values
+        for metric_eval in metrics:
+            for pct in np.arange(0, 0.1, 0.01):
+                n_out = int(pct * y.shape[0])
+                results_metric = {'metric_train': metric, 'metric_eval': metric_eval}
+                results_metric['pct_outliers'] = pct
 
-        for pct in np.arange(0, 0.1, 0.01):
-            n_out = int(pct * y.shape[0])
-            results_metric = {'metric': metric}
-            results_metric['pct_outliers'] = pct
+                for model in ['fforma', 'mean', 'softmin', 'best_model']:
+                    y_hat = forecasts[f'{model}_ensemble'].values
+                    delta_y = np.abs(y - y_hat)
 
-            for model in ['fforma', 'mean', 'softmin', 'best_model']:
-                y_hat = forecasts[f'{model}_ensemble'].values
-                delta_y = np.abs(y - y_hat)
+                    index = delta_y.argsort()
+                    y_sorted = y[index]
+                    y_hat_sorted = y_hat[index]
 
-                index = delta_y.argsort()
-                y_sorted = y[index]
-                y_hat_sorted = y_hat[index]
+                    y_wo_out = y_sorted[n_out:-n_out] if n_out > 0 else y_sorted
+                    y_hat_wo_out = y_hat_sorted[n_out:-n_out] if n_out > 0 else  y_hat_sorted
+                    loss = _get_metric(metric)(y_wo_out, y_hat_wo_out) if y is not None else np.nan
+                    results_metric[f'{model}_ensemble'] = loss
 
-                y_wo_out = y_sorted[n_out:-n_out] if n_out > 0 else y_sorted
-                y_hat_wo_out = y_hat_sorted[n_out:-n_out] if n_out > 0 else  y_hat_sorted
-                loss = _get_metric(metric)(y_wo_out, y_hat_wo_out) if y is not None else np.nan
-                results_metric[f'{model}_ensemble'] = loss
-
-            results.append(results_metric)
+                results.append(results_metric)
 
     results = pd.DataFrame(results).round(2)
     results.to_csv(evaluation_path / f'evaluation_{group}.csv', index=False)
