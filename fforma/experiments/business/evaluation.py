@@ -68,7 +68,7 @@ def main(directory: str, group: str) -> None:
 
                     y_wo_out = y_sorted[n_out:-n_out] if n_out > 0 else y_sorted
                     y_hat_wo_out = y_hat_sorted[n_out:-n_out] if n_out > 0 else  y_hat_sorted
-                    loss = _get_metric(metric)(y_wo_out, y_hat_wo_out) if y is not None else np.nan
+                    loss = _get_metric(metric_eval)(y_wo_out, y_hat_wo_out) if y is not None else np.nan
                     results_metric[f'{model}_ensemble'] = loss
 
                 results.append(results_metric)
