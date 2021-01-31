@@ -24,8 +24,8 @@ def remove_outlier(df_in, col_name):
 def main(directory: str, group: str) -> None:
     logger.info('Reading dataset')
     ts = Business.load(directory, group)
-    ts = [remove_outlier(df, 'y') for _, df in ts.groupby('unique_id')]
-    ts = pd.concat(ts)
+    #ts = [remove_outlier(df, 'y') for _, df in ts.groupby('unique_id')]
+    #ts = pd.concat(ts)
     logger.info('Dataset readed')
 
     main_path = Path(directory) / 'business'
