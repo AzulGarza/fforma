@@ -8,6 +8,7 @@ from pathlib import Path
 from time import time
 from typing import Callable, Tuple
 
+import numpy as np
 import pandas as pd
 
 from ..datasets.business import Business
