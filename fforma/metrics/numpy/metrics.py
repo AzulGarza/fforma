@@ -265,7 +265,7 @@ def pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: int = 0.5) -> float:
     """
     delta_y = y - y_hat
     pinball = np.maximum(tau * delta_y, (tau - 1) * delta_y)
-    pinball = pinball.mean()
+    pinball = np.nanmean(pinball)
 
     return pinball
 
@@ -294,3 +294,34 @@ def quantile_calibration(y: np.ndarray, y_hat: np.ndarray) -> float:
     calibration = comparison.mean()
 
     return calibration
+
+def w_pinball_loss(y: np.ndarray, y_hat: np.ndarray, tau: float=0.5, weights=None) -> np.ndarray:
+    """Calculates the Pinball Loss.
+
+    The Pinball loss measures the deviation of a quantile forecast.
+    By weighting the absolute deviation in a non symmetric way, the
+    loss pays more attention to under or over estimation.
+    A common value for tau is 0.5 for the deviation from the median.
+
+    Parameters
+    ----------
+    y: numpy array
+      actual test values
+    y_hat: numpy array of len h (forecasting horizon)
+      predicted values
+    weights: numpy array
+      weights for weigted average
+    tau: float
+      Fixes the quantile against which the predictions are compared.
+    Return
+    ------
+    return: pinball_loss
+    """
+    #metric_protections(y, y_hat, weights)
+    if weights is None: weights = np.ones_like(y)
+
+    delta_y = y - y_hat
+    pinball = np.maximum(tau * delta_y, (tau - 1) * delta_y)
+    pinball = divide_no_nan(np.sum(pinball, axis=1), np.sum(np.abs(y), axis=1))
+
+    return 2 * np.mean(pinball)
