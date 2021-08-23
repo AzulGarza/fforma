@@ -116,8 +116,8 @@ def main(directory: str, group: str, replace: bool) -> None:
     meta = pd.DataFrame(meta).sort_values('test_cutoff')
     forecasts = pd.concat(forecasts)
 
-    meta.to_csv(base_path / f'meta-{group.lower()}-quantile.csv', index=False)
-    forecasts.to_csv(base_path / f'forecasts-{group.lower()}-quantile.csv', index=False)
+    meta.to_csv(base_path / f'meta-{group.lower()}-qar.csv', index=False)
+    forecasts.to_csv(base_path / f'forecasts-{group.lower()}-qar.csv', index=False)
 
     logger.info('Results saved')
 
