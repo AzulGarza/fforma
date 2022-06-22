@@ -10,7 +10,7 @@ llvmlite==0.32.1
 matplotlib==3.2.1
 more-itertools==6.0.0
 numba==0.49.1
-numpy==1.16.1
+numpy==1.22.0
 pandas==0.25.2
 patsy==0.5.1
 property-cached==1.6.4
