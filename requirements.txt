@@ -3,7 +3,7 @@ cycler==0.10.0
 Cython==0.29.19
 ESRNN==0.1.2
 future==0.18.2
-joblib==0.15.1
+joblib==1.2.0
 kiwisolver==1.2.0
 lightgbm==2.3.1
 llvmlite==0.32.1
